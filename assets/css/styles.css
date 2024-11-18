@@ -1,0 +1,114 @@
+/* Body styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    margin: 0;
+    display: flex;              
+    flex-direction: column;      
+    min-height: 100vh;           
+}
+
+/* Header styling */
+header {
+    background-color: #6f4e37;
+    color: white;
+    padding: 2rem 0;
+    text-align: center;
+}
+
+/* Navbar styling */
+.navbar-custom {
+    background-color: #f8f9fa;
+}
+
+.navbar-custom .nav-link {
+    color: #6f4e37;
+    font-weight: 500;
+}
+
+.navbar-custom .nav-link:hover {
+    color: #a0522d;
+}
+
+/* Main content area styling */
+.main-content {
+    flex: 1;                     
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+}
+
+/* Form container styling */
+.form-container {
+    width: 100%;
+    max-width: 600px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(94, 42, 0, 0.658);
+    padding: 2rem;
+    overflow-y: auto;
+}
+
+/* Footer styling */
+.footer {
+    background-color: #6f4e37;
+    color: white;
+    padding: 1rem 0;
+    text-align: center;
+    margin-top: auto;            
+}
+
+/* Scrollbar Styles */
+.form-container::-webkit-scrollbar,
+.table-responsive::-webkit-scrollbar {
+    width: 12px;
+}
+
+.form-container::-webkit-scrollbar-track,
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 6px;
+}
+
+.form-container::-webkit-scrollbar-thumb,
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: #6f4e37;
+    border-radius: 6px;
+    border: 3px solid #f1f1f1;
+}
+
+.form-container,
+.table-responsive {
+    scrollbar-width: thin;
+    scrollbar-color: #6f4e37 #f1f1f1;
+}
+
+/* Table Responsive Styling */
+.table-responsive {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+/* Hero Section Styling */
+.hero {
+    padding: 4rem 0;
+    text-align: center;
+}
+
+.hero h2 {
+    margin-bottom: 1.5rem;
+    color: #6f4e37;
+}
+
+.hero p {
+    font-size: 1.1rem;
+    color: #555;
+}
+.navbar-nav .greeting-text {
+    display: block;
+    padding: 0.5rem 1rem;
+    color: black;
+}
+
+
