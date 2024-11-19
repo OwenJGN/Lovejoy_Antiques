@@ -10,15 +10,15 @@ if (isLoggedIn()) {
     exit();
 }
 
-$errors = [];
-$success = false;
+$security_questions = fetchSecurityQuestions($pdo);
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $result = processRegistrationForm($pdo);
     $errors = $result['errors'];
     $success = $result['success'];
-
+    
+    $security_questions = fetchSecurityQuestions($pdo);
     if ($success) {
         // Redirect to verify_email.php with a success message
         header('Location: verify_email.php?registered=1');
@@ -92,23 +92,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="8">
             </div>
 
-            <!-- Security Question Field -->
+            <!-- Security Questions -->
+            <h3>Security Questions</h3>
+
+            <!-- Security Question 1 -->
             <div class="mb-3">
-                <label for="security_question" class="form-label">Security Question<span class="text-danger">*</span></label>
-                <select class="form-control" id="security_question" name="security_question" required>
-                    <option value="">Select a security question</option>
-                    <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-                    <option value="What is the name of your first school?">What is the name of your first school?</option>
-                    <option value="What was the make of your first car?">What was the make of your first car?</option>
+                <label for="security_question_1" class="form-label">Security Question 1:</label>
+                <select name="security_question_1" id="security_question_1" class="form-control" required>
+                    <option value="">-- Select a question --</option>
+                    <?php foreach ($security_questions as $question): ?>
+                        <option value="<?php echo htmlspecialchars($question['id']); ?>"
+                            <?php echo (isset($_POST['security_question_1']) && $_POST['security_question_1'] == $question['id']) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($question['question']); ?>
+                        </option>
+                    <?php endforeach; ?>
                 </select>
+                <input type="text" name="security_answer_1" class="form-control mt-2" placeholder="Your Answer" required
+                       value="<?php echo isset($_POST['security_answer_1']) ? htmlspecialchars($_POST['security_answer_1']) : ''; ?>">
             </div>
 
-            <!-- Security Answer Field -->
+            <!-- Security Question 2 -->
             <div class="mb-3">
-                <label for="security_answer" class="form-label">Security Answer<span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="security_answer" name="security_answer" required maxlength="255"
-                    value="<?php echo isset($_POST['security_answer']) ? escape($_POST['security_answer']) : ''; ?>">
+                <label for="security_question_2" class="form-label">Security Question 2:</label>
+                <select name="security_question_2" id="security_question_2" class="form-control" required>
+                    <option value="">-- Select a question --</option>
+                    <?php foreach ($security_questions as $question): ?>
+                        <option value="<?php echo htmlspecialchars($question['id']); ?>"
+                            <?php echo (isset($_POST['security_question_2']) && $_POST['security_question_2'] == $question['id']) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($question['question']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="text" name="security_answer_2" class="form-control mt-2" placeholder="Your Answer" required
+                       value="<?php echo isset($_POST['security_answer_2']) ? htmlspecialchars($_POST['security_answer_2']) : ''; ?>">
             </div>
+
+            <!-- Security Question 3 -->
+            <div class="mb-3">
+                <label for="security_question_3" class="form-label">Security Question 3:</label>
+                <select name="security_question_3" id="security_question_3" class="form-control" required>
+                    <option value="">-- Select a question --</option>
+                    <?php foreach ($security_questions as $question): ?>
+                        <option value="<?php echo htmlspecialchars($question['id']); ?>"
+                            <?php echo (isset($_POST['security_question_3']) && $_POST['security_question_3'] == $question['id']) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($question['question']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="text" name="security_answer_3" class="form-control mt-2" placeholder="Your Answer" required
+                       value="<?php echo isset($_POST['security_answer_3']) ? htmlspecialchars($_POST['security_answer_3']) : ''; ?>">
+            </div>
+
 
             <!-- Submit Button -->
             <button type="submit" class="btn btn-primary">Register</button>

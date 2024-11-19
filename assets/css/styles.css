@@ -47,7 +47,7 @@ header {
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(94, 42, 0, 0.658);
     padding: 2rem;
-    overflow-y: auto;
+    overflow-y: visible;
 }
 
 /* Footer styling */

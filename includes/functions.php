@@ -1,10 +1,27 @@
 <?php
+// Start a secure session
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Include configuration for sensitive data like reCAPTCHA keys
+require_once 'config.php';
+
+// Database connection
 require_once '../includes/db_connect.php'; 
+
+// Include PHPMailer for sending emails
 require 'PHPMailer/src/Exception.php';
 require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
 
-// Generate CSRF token
+// Use PHPMailer namespaces
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+/**
+ * Generate CSRF token and store it in session
+ */
 function generateCsrfToken() {
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -12,27 +29,37 @@ function generateCsrfToken() {
     return $_SESSION['csrf_token'];
 }
 
-// Verify CSRF token
+/**
+ * Verify CSRF token from form submission
+ */
 function verifyCsrfToken($token) {
     return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
 }
 
-// Check if user is logged in
+/**
+ * Check if user is logged in
+ */
 function isLoggedIn() {
     return isset($_SESSION['user_id']);
 }
 
-// Check if user is admin
+/**
+ * Check if user is an admin
+ */
 function isAdmin() {
     return isset($_SESSION['is_admin']) && $_SESSION['is_admin'] === 1;
 }
 
-// Escape output to prevent XSS
+/**
+ * Escape output to prevent XSS
+ */
 function escape($html) {
     return htmlspecialchars($html, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
 }
 
-// Access control function
+/**
+ * Access control based on user role
+ */
 function checkAccess($requiredRole = 'user') {
     if (!isLoggedIn()) {
         header('Location: index.php');
@@ -44,7 +71,9 @@ function checkAccess($requiredRole = 'user') {
     }
 }
 
-// Fetch evaluation requests (for admin)
+/**
+ * Fetch evaluation requests for admin
+ */
 function fetchEvaluationRequests($pdo) {
     try {
         $stmt = $pdo->prepare("
@@ -61,7 +90,9 @@ function fetchEvaluationRequests($pdo) {
     }
 }
 
-// Authenticate user
+/**
+ * Authenticate user with email and password
+ */
 function authenticateUser($pdo, $email, $password) {
     try {
         $stmt = $pdo->prepare("SELECT id, name, email, password, is_admin, is_verified FROM users WHERE email = :email");
@@ -77,64 +108,88 @@ function authenticateUser($pdo, $email, $password) {
     return false;
 }
 
-// Register user
-function registerUser($pdo, $name, $email, $password, $phone, $security_question, $security_answer) {
+/**
+ * Register a new user
+ */
+function registerUser($pdo, $name, $email, $password, $phone, 
+                      $security_question_1, $security_answer_1, 
+                      $security_question_2, $security_answer_2, 
+                      $security_question_3, $security_answer_3) {
     try {
-        // Check if email already exists
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email");
-        $stmt->execute([':email' => $email]);
-        if ($stmt->fetch()) {
-            return "An account with this email already exists.";
-        } else {
-            // Hash the password
-            $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+        // Hash the password using BCRYPT
+        $hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
-            // Normalize and hash the security answer
-            $normalized_security_answer = mb_strtolower(trim($security_answer));
-            $hashed_security_answer = password_hash($normalized_security_answer, PASSWORD_BCRYPT);
+        // Hash the security answers using BCRYPT
+        $hashed_answer_1 = password_hash($security_answer_1, PASSWORD_BCRYPT);
+        $hashed_answer_2 = password_hash($security_answer_2, PASSWORD_BCRYPT);
+        $hashed_answer_3 = password_hash($security_answer_3, PASSWORD_BCRYPT);
 
-            // Insert the new user into the database
-            $stmt = $pdo->prepare("
-                INSERT INTO users (
-                    name, email, password, phone, security_question, security_answer, is_admin, registered_at, is_verified
-                ) VALUES (
-                    :name, :email, :password, :phone, :security_question, :security_answer, 0, NOW(), 0
-                )
-            ");
-            $stmt->execute([
-                ':name' => $name,
-                ':email' => $email,
-                ':password' => $hashed_password,
-                ':phone' => $phone,
-                ':security_question' => $security_question,
-                ':security_answer' => $hashed_security_answer
-            ]);
+        // Begin a transaction
+        $pdo->beginTransaction();
 
-            // Get the user ID
-            $user_id = $pdo->lastInsertId();
+        // Insert the user into the users table
+        $stmt = $pdo->prepare("
+            INSERT INTO users (name, email, password, phone) 
+            VALUES (:name, :email, :password, :phone)
+        ");
+        $stmt->execute([
+            ':name' => $name,
+            ':email' => $email,
+            ':password' => $hashed_password,
+            ':phone' => $phone
+        ]);
 
-            // Generate and store email verification token
-            $verification_token = generateAndStoreToken($pdo, $user_id, 'email_verification', 16, '+24 hours');
+        // Get the inserted user's ID
+        $user_id = $pdo->lastInsertId();
 
-            if ($verification_token) {
-                // Send verification email
-                sendVerificationEmail($email, $verification_token);
-            } else {
-                // Handle token generation failure
-                return "An error occurred while generating the verification token.";
-            }
+        // Prepare the INSERT statement for user_security_questions
+        $stmt = $pdo->prepare("
+            INSERT INTO user_security_questions (user_id, security_question_id, security_answer) 
+            VALUES (:user_id, :security_question_id, :security_answer)
+        ");
 
-            return true;
-        }
-    } catch (PDOException $e) {
-        error_log("Database Error in registerUser: " . $e->getMessage());
+        // Insert Security Question 1
+        $stmt->execute([
+            ':user_id' => $user_id,
+            ':security_question_id' => $security_question_1,
+            ':security_answer' => $hashed_answer_1
+        ]);
+
+        // Insert Security Question 2
+        $stmt->execute([
+            ':user_id' => $user_id,
+            ':security_question_id' => $security_question_2,
+            ':security_answer' => $hashed_answer_2
+        ]);
+
+        // Insert Security Question 3
+        $stmt->execute([
+            ':user_id' => $user_id,
+            ':security_question_id' => $security_question_3,
+            ':security_answer' => $hashed_answer_3
+        ]);
+
+        // Commit the transaction
+        $pdo->commit();
+
+        $token = generateAndStoreToken($pdo, $user_id, 'email_verification', 16, '+24 hours');
+        sendVerificationEmail($email, $token);
+        
+        return true;
+    } catch (Exception $e) {
+        // Rollback the transaction on error
+        $pdo->rollBack();
+        // Log the error message (ensure not to expose it to users)
+        error_log("Registration Error: " . $e->getMessage());
         return "An error occurred while registering. Please try again later.";
     }
 }
 
 
 
-// Submit evaluation request
+/**
+ * Submit an evaluation request
+ */
 function submitEvaluationRequest($pdo, $userId, $details, $preferred_contact, $photo_filename) {
     try {
         $stmt = $pdo->prepare("
@@ -156,7 +211,9 @@ function submitEvaluationRequest($pdo, $userId, $details, $preferred_contact, $p
     }
 }
 
-// Handle file upload
+/**
+ * Handle file upload securely
+ */
 function handleFileUpload($file, &$errors) {
     $photo_filename = null;
     if ($file['error'] !== UPLOAD_ERR_NO_FILE) {
@@ -182,12 +239,15 @@ function handleFileUpload($file, &$errors) {
     return $photo_filename;
 }
 
-// Process Login Form
+/**
+ * Process the login form with login attempt limiting
+ */
 function processLoginForm($pdo) {
     $errors = [];
     // CSRF token validation
     if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
         $errors[] = "Invalid CSRF token.";
+        return $errors;
     }
 
     // Retrieve and sanitize inputs
@@ -206,11 +266,83 @@ function processLoginForm($pdo) {
         $errors[] = "Password is required.";
     }
 
-    // If no errors, proceed to authenticate the user
+    // Get client IP
+    $client_ip = $_SERVER['REMOTE_ADDR'];
+
+    // Get user ID if email exists
+    $user_id = null;
+    if (!empty($email)) {
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
+        $stmt->execute([':email' => $email]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $user_id = $user ? $user['id'] : null;
+    }
+
+    // Fetch login attempt record
+    if ($user_id) {
+        $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE user_id = :user_id AND action_type = 'login' LIMIT 1");
+        $stmt->execute([':user_id' => $user_id]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE ip_address = :ip_address AND action_type = 'login' LIMIT 1");
+        $stmt->execute([':ip_address' => $client_ip]);
+    }
+    $attempt_record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Check if account or IP is locked
+    if ($attempt_record && $attempt_record['lock_until']) {
+        $current_time = new DateTime();
+        $lock_until = new DateTime($attempt_record['lock_until']);
+
+        if ($current_time < $lock_until) {
+            $remaining = $lock_until->diff($current_time);
+            $hours = $remaining->h;
+            $minutes = $remaining->i;
+            $seconds = $remaining->s;
+            $errors[] = "Your account is locked due to multiple failed login attempts. Please try again after {$hours}h {$minutes}m {$seconds}s.";
+            return $errors;
+        }
+    }
+
+    // Determine if CAPTCHA should be shown
+    $show_captcha = false;
+    if ($attempt_record) {
+        if ($attempt_record['attempts'] >= 3 && $attempt_record['attempts'] < 7) {
+            $show_captcha = true;
+        }
+    }
+
+    // If CAPTCHA is required, verify it
+    if ($show_captcha) {
+        if (empty($_POST['g-recaptcha-response'])) {
+            $errors[] = "Please complete the CAPTCHA.";
+        } else {
+            // Verify CAPTCHA with Google
+            $recaptcha_secret = RECAPTCHA_SECRET_KEY;
+            $recaptcha_response = $_POST['g-recaptcha-response'];
+            
+            $verify_response = file_get_contents("https://www.google.com/recaptcha/api/siteverify?secret={$recaptcha_secret}&response={$recaptcha_response}");
+            $response_data = json_decode($verify_response);
+            
+            if (!$response_data->success) {
+                $errors[] = "CAPTCHA verification failed. Please try again.";
+            }
+        }
+    }
+
+    // Proceed only if no errors so far
     if (empty($errors)) {
         $user = authenticateUser($pdo, $email, $password);
-        if($user){
+        if ($user) {
             if ($user['is_verified'] == 1) {
+                // Reset login attempts on successful login
+                if ($user_id) {
+                    $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE user_id = :user_id AND action_type = 'login'");
+                    $stmt->execute([':user_id' => $user_id]);
+                } else {
+                    $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE ip_address = :ip_address AND action_type = 'login'");
+                    $stmt->execute([':ip_address' => $client_ip]);
+                }
+
                 // Set session variables
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['user_name'] = $user['name'];
@@ -222,113 +354,217 @@ function processLoginForm($pdo) {
                 // Redirect to index.php
                 header('Location: index.php');
                 exit();
-            }
-            else{
+            } else {
                 $errors[] = "Your email is not verified. Please verify your email.";
             }
-        }
-        else {
+        } else {
             $errors[] = "Invalid email or password.";
+
+            // Increment login attempts
+            if ($user_id) {
+                if ($attempt_record) {
+                    $attempts = $attempt_record['attempts'] + 1;
+                    $lock_until = null;
+
+                    if ($attempts >= 7) {
+                        // Lock the account for 12 hours
+                        $lock_time = new DateTime();
+                        $lock_time->modify('+12 hours');
+                        $lock_until = $lock_time->format('Y-m-d H:i:s');
+                        $errors[] = "Your account has been locked due to multiple failed login attempts. Please try again after 12 hours.";
+                    }
+
+                    // Update the attempts
+                    $stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW(), lock_until = :lock_until WHERE id = :id");
+                    $stmt->execute([
+                        ':attempts' => $attempts,
+                        ':lock_until' => $lock_until,
+                        ':id' => $attempt_record['id']
+                    ]);
+                } else {
+                    // Create a new attempt record
+                    $stmt = $pdo->prepare("INSERT INTO user_attempts (user_id, action_type, attempts, last_attempt) VALUES (:user_id, 'login', 1, NOW())");
+                    $stmt->execute([':user_id' => $user_id]);
+                }
+            } else {
+                // If user_id is not found, track by IP
+                if ($attempt_record) {
+                    $attempts = $attempt_record['attempts'] + 1;
+                    $lock_until = null;
+
+                    if ($attempts >= 7) {
+                        // Lock the IP for 12 hours
+                        $lock_time = new DateTime();
+                        $lock_time->modify('+12 hours');
+                        $lock_until = $lock_time->format('Y-m-d H:i:s');
+                        $errors[] = "Too many failed login attempts from your IP address. Please try again after 12 hours.";
+                    }
+
+                    // Update the attempts
+                    $stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW(), lock_until = :lock_until WHERE id = :id");
+                    $stmt->execute([
+                        ':attempts' => $attempts,
+                        ':lock_until' => $lock_until,
+                        ':id' => $attempt_record['id']
+                    ]);
+                } else {
+                    // Create a new attempt record
+                    $stmt = $pdo->prepare("INSERT INTO user_attempts (ip_address, action_type, attempts, last_attempt) VALUES (:ip_address, 'login', 1, NOW())");
+                    $stmt->execute([':ip_address' => $client_ip]);
+                }
+            }
         }
     }
 
     return $errors;
 }
 
-function processRegistrationForm($pdo) {
-    $errors = [];
-    $success = false;
+/**
+ * Process the registration form
+ */
 
-    // CSRF token validation
-    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
-        $errors[] = "Invalid CSRF token.";
-        return ['errors' => $errors, 'success' => $success];
-    }
+ function processRegistrationForm($pdo) {
+     $errors = [];
+     $success = false;
+ 
+     // CSRF token validation
+     if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+         $errors[] = "Invalid CSRF token.";
+         return ['errors' => $errors, 'success' => $success];
+     }
+ 
+     // Retrieve and sanitize inputs
+     $email = trim($_POST['email'] ?? '');
+     $confirm_email = trim($_POST['confirm_email'] ?? '');
+     $password = $_POST['password'] ?? '';
+     $confirm_password = $_POST['confirm_password'] ?? '';
+     $name = trim($_POST['name'] ?? '');
+     $phone = trim($_POST['phone'] ?? '');
+ 
+     // Retrieve and sanitize security questions and answers
+     $security_question_1 = intval($_POST['security_question_1'] ?? 0);
+     $security_answer_1 = trim($_POST['security_answer_1'] ?? '');
+     $security_question_2 = intval($_POST['security_question_2'] ?? 0);
+     $security_answer_2 = trim($_POST['security_answer_2'] ?? '');
+     $security_question_3 = intval($_POST['security_question_3'] ?? 0);
+     $security_answer_3 = trim($_POST['security_answer_3'] ?? '');
+ 
+     // Validate email
+     if (empty($email)) {
+         $errors[] = "Email is required.";
+     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+         $errors[] = "Invalid email format.";
+     } elseif ($email !== $confirm_email) {
+         $errors[] = "Emails do not match.";
+     }
+ 
+     // Validate password
+     if (empty($password)) {
+         $errors[] = "Password is required.";
+     } elseif (strlen($password) < 8) {
+         $errors[] = "Password must be at least 8 characters long.";
+     } elseif (!preg_match('/[A-Z]/', $password)) {
+         $errors[] = "Password must contain at least one uppercase letter.";
+     } elseif (!preg_match('/[a-z]/', $password)) {
+         $errors[] = "Password must contain at least one lowercase letter.";
+     } elseif (!preg_match('/[0-9]/', $password)) {
+         $errors[] = "Password must contain at least one number.";
+     } elseif (!preg_match('/[\W]/', $password)) {
+         $errors[] = "Password must contain at least one special character.";
+     }
+ 
+     // Confirm password
+     if (empty($confirm_password)) {
+         $errors[] = "Please confirm your password.";
+     } elseif ($password !== $confirm_password) {
+         $errors[] = "Passwords do not match.";
+     }
+ 
+     // Validate name
+     if (empty($name)) {
+         $errors[] = "Name is required.";
+     } elseif (strlen($name) > 255) {
+         $errors[] = "Name must not exceed 255 characters.";
+     }
+ 
+     // Validate phone
+     if (empty($phone)) {
+         $errors[] = "Contact telephone number is required.";
+     } elseif (!preg_match('/^\+?[0-9\s\-]{7,20}$/', $phone)) {
+         $errors[] = "Invalid telephone number format.";
+     }
+ 
+     // Validate security questions
+     if ($security_question_1 === 0 || $security_question_2 === 0 || $security_question_3 === 0) {
+         $errors[] = "All three security questions must be selected.";
+     } else {
+         // Ensure all selected questions are distinct
+         if ($security_question_1 === $security_question_2 || 
+             $security_question_1 === $security_question_3 || 
+             $security_question_2 === $security_question_3) {
+             $errors[] = "Security questions must be distinct.";
+         }
+     }
+ 
+     // Validate security answers
+     if (empty($security_answer_1)) {
+         $errors[] = "Answer to Security Question 1 is required.";
+     } elseif (strlen($security_answer_1) > 255) {
+         $errors[] = "Security Answer 1 must not exceed 255 characters.";
+     }
+ 
+     if (empty($security_answer_2)) {
+         $errors[] = "Answer to Security Question 2 is required.";
+     } elseif (strlen($security_answer_2) > 255) {
+         $errors[] = "Security Answer 2 must not exceed 255 characters.";
+     }
+ 
+     if (empty($security_answer_3)) {
+         $errors[] = "Answer to Security Question 3 is required.";
+     } elseif (strlen($security_answer_3) > 255) {
+         $errors[] = "Security Answer 3 must not exceed 255 characters.";
+     }
+ 
+     // If no errors, proceed to register the user
+     if (empty($errors)) {
+         // Check if email already exists
+         if (emailExists($pdo, $email)) {
+             $errors[] = "An account with this email already exists.";
+             return ['errors' => $errors, 'success' => $success];
+         }
+ 
+         // Attempt to register the user
+         $result = registerUser(
+             $pdo, 
+             $name, 
+             $email, 
+             $password, 
+             $phone, 
+             $security_question_1, 
+             $security_answer_1, 
+             $security_question_2, 
+             $security_answer_2, 
+             $security_question_3, 
+             $security_answer_3
+         );
+ 
+         if ($result === true) {
+             $success = true;
+         } else {
+             $errors[] = $result;
+         }
+     }
+ 
+     return ['errors' => $errors, 'success' => $success];
+ }
+ 
+ 
 
-    // Retrieve and sanitize inputs
-    $email = trim($_POST['email'] ?? '');
-    $confirm_email = trim($_POST['confirm_email'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $confirm_password = $_POST['confirm_password'] ?? '';
-    $name = trim($_POST['name'] ?? '');
-    $phone = trim($_POST['phone'] ?? '');
-    $security_question = trim($_POST['security_question'] ?? '');
-    $security_answer = trim($_POST['security_answer'] ?? '');
-
-    // Validate email
-    if (empty($email)) {
-        $errors[] = "Email is required.";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errors[] = "Invalid email format.";
-    } elseif ($email !== $confirm_email) {
-        $errors[] = "Emails do not match.";
-    }
-
-    // Validate password
-    if (empty($password)) {
-        $errors[] = "Password is required.";
-    } elseif (strlen($password) < 8) {
-        $errors[] = "Password must be at least 8 characters long.";
-    } elseif (!preg_match('/[A-Z]/', $password)) {
-        $errors[] = "Password must contain at least one uppercase letter.";
-    } elseif (!preg_match('/[a-z]/', $password)) {
-        $errors[] = "Password must contain at least one lowercase letter.";
-    } elseif (!preg_match('/[0-9]/', $password)) {
-        $errors[] = "Password must contain at least one number.";
-    } elseif (!preg_match('/[\W]/', $password)) {
-        $errors[] = "Password must contain at least one special character.";
-    }
-
-    // Confirm password
-    if (empty($confirm_password)) {
-        $errors[] = "Please confirm your password.";
-    } elseif ($password !== $confirm_password) {
-        $errors[] = "Passwords do not match.";
-    }
-
-    // Validate name
-    if (empty($name)) {
-        $errors[] = "Name is required.";
-    } elseif (strlen($name) > 255) {
-        $errors[] = "Name must not exceed 255 characters.";
-    }
-
-    // Validate phone
-    if (empty($phone)) {
-        $errors[] = "Contact telephone number is required.";
-    } elseif (!preg_match('/^\+?[0-9\s\-]{7,20}$/', $phone)) {
-        $errors[] = "Invalid telephone number format.";
-    }
-
-    // Validate security question
-    if (empty($security_question)) {
-        $errors[] = "Please select a security question.";
-    }
-
-    // Validate security answer
-    if (empty($security_answer)) {
-        $errors[] = "Please provide an answer to your security question.";
-    } elseif (strlen($security_answer) > 255) {
-        $errors[] = "Security answer must not exceed 255 characters.";
-    }
-
-    // If no errors, proceed to register the user
-    if (empty($errors)) {
-        // Attempt to register the user
-        $result = registerUser($pdo, $name, $email, $password, $phone, $security_question, $security_answer);
-
-        if ($result === true) {
-            $success = true;
-        } else {
-            $errors[] = $result;
-        }
-    }
-
-    return ['errors' => $errors, 'success' => $success];
-}
 
 
-// Process Evaluation Request Form
+/**
+ * Process evaluation request form
+ */
 function processEvaluationRequestForm($pdo, $userId) {
     $errors = [];
     $success = false;
@@ -374,6 +610,9 @@ function processEvaluationRequestForm($pdo, $userId) {
     return ['errors' => $errors, 'success' => $success];
 }
 
+/**
+ * Generate and store a token (e.g., for email verification)
+ */
 function generateAndStoreToken($pdo, $user_id, $type, $token_length = 16, $validity_period = '+24 hours') {
     try {
         // Start a transaction to ensure atomicity
@@ -419,13 +658,11 @@ function generateAndStoreToken($pdo, $user_id, $type, $token_length = 16, $valid
     }
 }
 
-
-
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
+/**
+ * Send verification email using PHPMailer
+ */
 function sendVerificationEmail($email, $verification_token) {
-    // Gmail SMTP credentials
+    // Create a new PHPMailer instance
     $mail = new PHPMailer(true);
     try {
         // Server settings
@@ -444,7 +681,7 @@ function sendVerificationEmail($email, $verification_token) {
         // Content
         $mail->isHTML(true);
         $mail->Subject = 'Verify Your Email Address';
-        $verification_link = "http://localhost/lovejoy-antiques/public/verify_email.php?token=" . urlencode($verification_token);
+        $verification_link = "http://localhost/lovejoy_antiques/public/verify_email.php?token=" . urlencode($verification_token);
         $mail->Body    = "
             <html>
             <head>
@@ -465,7 +702,9 @@ function sendVerificationEmail($email, $verification_token) {
     }
 }
 
-
+/**
+ * Resend verification email with rate limiting
+ */
 function processResendVerificationForm($pdo, $email) {
     $errors = [];
     $success = '';
@@ -514,9 +753,6 @@ function processResendVerificationForm($pdo, $email) {
                                 ':user_id'             => $user['id']
                             ]);
                         }
-                    } else {
-                        // Reset attempts after 24 hours
-                        $attempts = 0;
                     }
                 }
 
@@ -531,7 +767,7 @@ function processResendVerificationForm($pdo, $email) {
                         sendVerificationEmail($email, $verification_token);
                         $success = "A new verification email has been sent to your email address.";
 
-                        // Update resend attempts in user_attempts table with unique placeholders
+                        // Update resend attempts in user_attempts table
                         $stmt = $pdo->prepare("
                             INSERT INTO user_attempts (user_id, action_type, last_attempt, attempts)
                             VALUES (:user_id, 'verification', :current_time_insert, :attempts_insert)
@@ -560,10 +796,9 @@ function processResendVerificationForm($pdo, $email) {
     ];
 }
 
-
-
-
-
+/**
+ * Process email verification using token
+ */
 function processEmailVerification($pdo, $token) {
     $errors = [];
     $success = '';
@@ -624,4 +859,15 @@ function processEmailVerification($pdo, $token) {
     return ['success' => $success, 'errors' => $errors];
 }
 
+function fetchSecurityQuestions($pdo) {
+    $stmt = $pdo->prepare("SELECT id, question FROM security_questions ORDER BY question ASC");
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function emailExists($pdo, $email) {
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
+    $stmt->execute([':email' => $email]);
+    return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
+}
 ?>

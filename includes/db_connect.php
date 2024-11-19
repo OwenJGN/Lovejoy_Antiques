@@ -1,7 +1,7 @@
 <?php
 
 $host = 'localhost';
-$db   = 'lovejoy_antique_db';
+$db   = 'lovejoy_antiques';
 $user = 'root'; 
 $pass = ''; 
 $charset = 'utf8mb4';
