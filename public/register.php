@@ -18,7 +18,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors = $result['errors'];
     $success = $result['success'];
     
-    $security_questions = fetchSecurityQuestions($pdo);
     if ($success) {
         // Redirect to verify_email.php with a success message
         header('Location: verify_email.php?registered=1');

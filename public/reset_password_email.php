@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
 
     // Process the resend verification form using the function
-    $result = processResendVerificationForm($pdo, $email);
+    $result = sendPasswordResetEmail($pdo, $email);
 
     // Assign results to variables for display
     $success = $result['success'];
@@ -23,10 +23,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!-- HTML Output -->
 <div class="main-content">
     <div class="form-container">
-        <h2 class="mb-4">Resend Verification Email</h2>
+        <h2 class="mb-4">Send Password Reset Link</h2>
 
         <!-- Resend Verification Form -->
-        <form action="resend_verification.php" method="POST" novalidate>
+        <form action="reset_password_email.php" method="POST" novalidate>
             <!-- CSRF Token -->
             <input type="hidden" name="csrf_token" value="<?php echo escape(generateCsrfToken()); ?>">
 
@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <!-- Submit Button -->
-            <button type="submit" class="btn btn-primary">Resend Verification Email</button>
+            <button type="submit" class="btn btn-primary">Send</button>
         </form>
     </div>
 </div>

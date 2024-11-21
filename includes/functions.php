@@ -443,11 +443,11 @@ function processLoginForm($pdo) {
  
      // Retrieve and sanitize security questions and answers
      $security_question_1 = intval($_POST['security_question_1'] ?? 0);
-     $security_answer_1 = trim($_POST['security_answer_1'] ?? '');
+     $security_answer_1 = strtolower(trim($_POST['security_answer_1'] ?? '')); // Lowercased
      $security_question_2 = intval($_POST['security_question_2'] ?? 0);
-     $security_answer_2 = trim($_POST['security_answer_2'] ?? '');
+     $security_answer_2 = strtolower(trim($_POST['security_answer_2'] ?? '')); // Lowercased
      $security_question_3 = intval($_POST['security_question_3'] ?? 0);
-     $security_answer_3 = trim($_POST['security_answer_3'] ?? '');
+     $security_answer_3 = strtolower(trim($_POST['security_answer_3'] ?? '')); // Lowercased
  
      // Validate email
      if (empty($email)) {
@@ -702,6 +702,49 @@ function sendVerificationEmail($email, $verification_token) {
     }
 }
 
+function sendPasswordResetEmail($email, $reset_token) {
+    // Create a new PHPMailer instance
+    $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+    try {
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com'; // Gmail SMTP server
+        $mail->SMTPAuth   = true;
+        $mail->Username   = 'lovejoyantiques262924'; // Your Gmail address
+        $mail->Password   = 'trfk wbjx etst xgtl'; // Your Gmail App Password
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587; // Gmail SMTP port
+
+        // Recipients
+        $mail->setFrom('no-reply@lovejoy.antiques.com', 'Lovejoy Antiques'); // Replace with your sender info
+        $mail->addAddress($email);
+
+        // Content
+        $mail->isHTML(true);
+        $mail->Subject = 'Password Reset Request';
+        $reset_link = "http://localhost/lovejoy_antiques/public/reset_password.php?token=" . urlencode($reset_token);
+        $mail->Body    = "
+            <html>
+            <head>
+                <title>Password Reset Request</title>
+            </head>
+            <body>
+                <p>Hello,</p>
+                <p>You have requested to reset your password. Please click the link below to proceed:</p>
+                <p><a href='$reset_link'>Reset Your Password</a></p>
+                <p>This link will expire in 1 hour. If you did not request a password reset, please ignore this email.</p>
+                <p>Best regards,<br>Lovejoy Antiques Team</p>
+            </body>
+            </html>
+        ";
+
+        $mail->send();
+        // Optionally, log that the email was sent successfully
+    } catch (Exception $e) {
+        error_log("Password Reset Email could not be sent to $email. Mailer Error: {$mail->ErrorInfo}");
+    }
+}
+
 /**
  * Resend verification email with rate limiting
  */
@@ -869,5 +912,92 @@ function emailExists($pdo, $email) {
     $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
     $stmt->execute([':email' => $email]);
     return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
+}
+
+function fetchUserSecurityQuestions($pdo, $user_id) {
+    
+    $stmt = $pdo->prepare("SELECT 
+        sq.id AS id,
+        sq.question AS question
+    FROM 
+        security_questions sq
+    INNER JOIN 
+        user_security_questions usq 
+        ON sq.id = usq.security_question_id
+    WHERE 
+        usq.user_id = :user_id
+    ORDER BY 
+        sq.id DESC");
+
+    $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+
+function fetchUserSecurityAnswers($pdo, $user_id){
+    $stmt = $pdo->prepare("SELECT security_answer as hashed_answer FROM user_security_questions WHERE user_id = :user_id ORDER BY security_question_id DESC");
+
+    $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+
+function checkSecurityQuestions($pdo, $user_id) {
+    $errors = [];
+    $success = false;
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['errors' => $errors, 'success' => $success];
+    }
+    // Fetch stored security questions and hashed answers
+    $stored_questions = fetchUserSecurityAnswers($pdo, $user_id);
+    
+    $security_answer_1 = strtolower(trim($_POST['security_answer_1'] ?? '')); // Lowercased
+    $security_answer_2 = strtolower(trim($_POST['security_answer_2'] ?? '')); // Lowercased
+    $security_answer_3 = strtolower(trim($_POST['security_answer_3'] ?? '')); // Lowercased
+
+    if (empty($security_answer_1)) {
+        $errors[] = "Answer to Security Question 1 is required.";
+    } 
+
+    if (empty($security_answer_2)) {
+        $errors[] = "Answer to Security Question 2 is required.";
+    } 
+
+    if (empty($security_answer_3)) {
+        $errors[] = "Answer to Security Question 3 is required.";
+    } 
+
+    if(empty($errors)){
+        // Iterate through each stored question and verify the corresponding answer
+        foreach ($stored_questions as $index => $question) {
+            $currentAnswer = '';
+            if($index == 0){
+                $currentAnswer = $security_answer_1;
+            } 
+            elseif($index == 1){
+                $currentAnswer = $security_answer_2;
+            }            
+            elseif($index == 2){
+                $currentAnswer = $security_answer_3;
+            }
+
+            
+            // Verify the provided answer against the hashed answer
+            if (!password_verify($currentAnswer, $question['hashed_answer'])) {
+                // Answer does not match
+                $errors[] = "Incorrect answer to the security question/s.";
+                return ['errors' => $errors, 'success' => $success];
+            }
+        }
+    }
+    
+    // All answers match
+    if(empty($errors)){
+        $success = true;
+    }
+    return ['errors' => $errors, 'success' => $success];
 }
 ?>

@@ -58,7 +58,7 @@ $csrf_token = generateCsrfToken();
                             <span class="greeting-text">Hello, <?php echo $userName; ?>!</span>
                         </li>                        
                         <li class="nav-item">
-                            <a class="nav-link" href="account.php">Your Account</a>
+                            <a class="nav-link" href="view_account.php">Your Account</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="request_evaluation.php">Request Evaluation</a>
@@ -84,3 +84,5 @@ $csrf_token = generateCsrfToken();
             </div>
         </div>
     </nav>
+
+    
