@@ -6,6 +6,10 @@ require_once '../includes/functions.php'; // Include functions.php for processin
 
 $errors = [];
 $success = '';
+if (isLoggedIn()) {
+    header('Location: index.php');
+    exit();
+}
 
 // Check if accessed via registration (with 'registered' parameter)
 if (isset($_GET['registered']) && $_GET['registered'] == '1') {

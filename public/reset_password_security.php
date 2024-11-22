@@ -1,21 +1,28 @@
 <?php
-// register.php
+// reset_password_security.php
 
 require_once 'header.php'; // Include your header (HTML head, navigation, etc.)
 require_once '../includes/functions.php'; // Include functions.php for processing
+
+checkAccess('user');
+
 $user_id = $_SESSION['user_id'];
-    
+
 $security_questions = fetchUserSecurityQuestions($pdo, $user_id);
+
+$errors = [];
+$success = '';
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $result = checkSecurityQuestions($pdo, $user_id);
     $errors = $result['errors'];
     $success = $result['success'];
 
     if ($success) {
         // Redirect to verify_email.php with a success message
-        header('Location: test.php?registered=1');
+        header('Location: reset_password.php?source=security_questions');
         exit();
     }
 }
@@ -36,6 +43,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php endif; ?>
             
+        	<?php if (!empty($success)): ?>
+            	<div class="alert alert-success" role="alert">
+                	<?php echo escape($success); ?>
+            	</div>
+        	<?php endif; ?>
+
             <!-- Registration Form -->
             <form action="reset_password_security.php" method="POST" novalidate>
                 <!-- CSRF Token -->

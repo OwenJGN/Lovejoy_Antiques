@@ -4,10 +4,8 @@ require_once '..\includes\functions.php';
 require_once '..\includes\config.php';
 
 // Redirect if already logged in
-if (isLoggedIn()) {
-    header('Location: index.php');
-    exit();
-}
+checkAccess('user');
+
 
 // Initialize variables
 $errors = [];
@@ -89,6 +87,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p class="mt-3">
                     Didn't receive the verification email? 
                     <a href="resend_verification.php">Resend Verification Email</a>
+                </p>
+            <?php else: ?>
+                <p class="mt-3">
+                    <a href="reset_password_email.php">Forgot Password?</a>
                 </p>
             <?php endif; ?>
 

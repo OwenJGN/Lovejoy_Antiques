@@ -6,6 +6,10 @@ require_once '..\includes\functions.php'; // Adjust the path as necessary
 
 $errors = [];
 $success = '';
+if (isLoggedIn()) {
+    header('Location: index.php');
+    exit();
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -13,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
 
     // Process the resend verification form using the function
-    $result = processResendVerificationForm($pdo, $email);
+    $result = processResendVerificationOrResetForm($pdo, $email, 'verification');
 
     // Assign results to variables for display
     $success = $result['success'];
@@ -24,6 +28,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="main-content">
     <div class="form-container">
         <h2 class="mb-4">Resend Verification Email</h2>
+
+        <?php if (!empty($errors)): ?>
+            <div class="alert alert-danger" role="alert">
+                <ul class="mb-0">
+                    <?php foreach ($errors as $error): ?>
+                        <li><?php echo escape($error); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
 
         <!-- Resend Verification Form -->
         <form action="resend_verification.php" method="POST" novalidate>

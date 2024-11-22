@@ -172,7 +172,7 @@ function registerUser($pdo, $name, $email, $password, $phone,
         // Commit the transaction
         $pdo->commit();
 
-        $token = generateAndStoreToken($pdo, $user_id, 'email_verification', 16, '+24 hours');
+        $token = generateAndStoreToken($pdo, $user_id, 'verification', 16, '+24 hours');
         sendVerificationEmail($email, $token);
         
         return true;
@@ -699,12 +699,15 @@ function sendVerificationEmail($email, $verification_token) {
         // Optionally, log that the email was sent successfully
     } catch (Exception $e) {
         error_log("Verification Email could not be sent to $email. Mailer Error: {$mail->ErrorInfo}");
+        return false;
     }
+    return true;
+
 }
 
 function sendPasswordResetEmail($email, $reset_token) {
     // Create a new PHPMailer instance
-    $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+    $mail = new PHPMailer(true);
     try {
         // Server settings
         $mail->isSMTP();
@@ -739,18 +742,22 @@ function sendPasswordResetEmail($email, $reset_token) {
         ";
 
         $mail->send();
+
         // Optionally, log that the email was sent successfully
     } catch (Exception $e) {
         error_log("Password Reset Email could not be sent to $email. Mailer Error: {$mail->ErrorInfo}");
+        return false;
     }
+    return true;
 }
 
 /**
  * Resend verification email with rate limiting
  */
-function processResendVerificationForm($pdo, $email) {
+function processResendVerificationOrResetForm($pdo, $email, $action) {
     $errors = [];
     $success = '';
+
     // Validate email format
     if (empty($email)) {
         $errors[] = "Email is required.";
@@ -759,77 +766,136 @@ function processResendVerificationForm($pdo, $email) {
     }
 
     if (empty($errors)) {
-        // Check if user exists and is not verified
+        // Determine action-specific parameters
+        if ($action === 'verification') {
+            $action_type = 'verification';
+            $email_status_check = true; // Check if email is already verified
+            $email_message_verified = "Your email is already verified. You can <a href='login.php'>log in</a>.";
+            $email_message_sent = "A new verification email has been sent to your email address.";
+            $email_send_function = 'sendVerificationEmail';
+            $token_type = 'verification';
+            $token_length = 16;
+            $token_expiry = '+24 hours';
+        } elseif ($action === 'password_reset') {
+            $action_type = 'password_reset';
+            $email_status_check = false; // No need to check verification status
+            $email_message_verified = ""; // Not applicable
+            $email_message_sent = "A password reset link has been sent to your email address.";
+            $email_send_function = 'sendPasswordResetEmail';
+            $token_type = 'password_reset';
+            $token_length = 32; // Typically longer for security
+            $token_expiry = '+1 hour'; // Password reset tokens often have shorter expiry
+        }
+
+        // Fetch user and relevant attempt data
         $stmt = $pdo->prepare("
-            SELECT users.id, users.is_verified, user_attempts.last_attempt, user_attempts.attempts 
+            SELECT users.id, users.is_verified, user_attempts.last_attempt, user_attempts.attempts, user_attempts.lock_until 
             FROM users
             LEFT JOIN user_attempts 
                 ON users.id = user_attempts.user_id 
-                AND user_attempts.action_type = 'verification'
+                AND user_attempts.action_type = :action_type
             WHERE users.email = :email
         ");
-        $stmt->execute([':email' => $email]);
+        $stmt->execute([
+            ':action_type' => $action_type,
+            ':email' => $email
+        ]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user) {
-            if ($user['is_verified'] == 1) {
-                $errors[] = "Your email is already verified. You can <a href='login.php'>log in</a>.";
+            // Handle verification action
+            if ($action === 'verification' && $user['is_verified'] == 1) {
+                $success = $email_message_verified;
             } else {
-                // Rate limiting: allow max 3 resend attempts within 24 hours
+                // Rate limiting parameters
                 $current_time = new DateTime();
                 $last_attempt = $user['last_attempt'] ? new DateTime($user['last_attempt']) : null;
-                $attempts = $user['attempts'] ?? 0; // Use null coalescing operator in case attempts is NULL
+                $lock_until = $user['lock_until'] ? new DateTime($user['lock_until']) : null;
+                $attempts = $user['attempts'] ?? 0;
 
-                if ($last_attempt) {
-                    $diff = $current_time->diff($last_attempt);
-                    $hours_passed = ($diff->days * 24) + $diff->h + (($diff->i > 0 || $diff->s > 0) ? 1 : 0);
+                // Check if user is currently locked out
+                if ($lock_until && $current_time < $lock_until) {
+                    $remaining = $current_time->diff($lock_until);
+                    $hours = $remaining->h + ($remaining->days * 24);
+                    $minutes = $remaining->i;
+                    $errors[] = "You have reached the maximum number of {$action} attempts. Please try again after {$hours} hours and {$minutes} minutes.";
+                } else {
+                    // Check if the last attempt was within the rate limiting window (24 hours)
+                    $hours_passed = 0;
+                    if ($last_attempt) {
+                        $diff = $current_time->diff($last_attempt);
+                        $hours_passed = ($diff->days * 24) + $diff->h + (($diff->i > 0 || $diff->s > 0) ? 1 : 0);
+                    }
+
+                    // Determine if within rate limiting window
                     if ($hours_passed < 24) {
                         if ($attempts >= 3) {
-                            $errors[] = "You have reached the maximum number of resend attempts. Please try again after 24 hours.";
+                            // Lock the user out for 24 hours
+                            $errors[] = "You have reached the maximum number of {$action} attempts. Please try again after 24 hours.";
                             $stmt = $pdo->prepare("
                                 UPDATE user_attempts
                                 SET lock_until = :lock_until
-                                WHERE user_id = :user_id
+                                WHERE user_id = :user_id AND action_type = :action_type
                             ");
+                            $lock_until_time = (clone $current_time)->modify('+24 hours')->format('Y-m-d H:i:s');
                             $stmt->execute([
-                                ':lock_until'     =>  $current_time->modify('+24 hours')->format('Y-m-d H:i:s'),
-                                ':user_id'             => $user['id']
+                                ':lock_until' => $lock_until_time,
+                                ':user_id' => $user['id'],
+                                ':action_type' => $action_type
+                            ]);
+                        }
+                    }
+
+                    if (empty($errors)) {
+                        // Generate a new token (overwrites existing if any)
+                        $token = generateAndStoreToken($pdo, $user['id'], $token_type, $token_length, $token_expiry);
+
+                        if (!$token) {
+                            $errors[] = "An error occurred while generating the token. Please try again later.";
+                        } else {
+                            // Send the appropriate email
+                            if (function_exists($email_send_function)) {
+                                $email_sent = call_user_func($email_send_function, $email, $token);
+                                if ($email_sent) {
+                                    $success = $email_message_sent;
+                                } else {
+                                    $errors[] = "Failed to send the email. Please try again later.";
+                                }
+                            } else {
+                                $errors[] = "Email sending function not defined.";
+                            }
+
+                            // Update resend attempts in user_attempts table
+                            $stmt = $pdo->prepare("
+                                INSERT INTO user_attempts (user_id, action_type, last_attempt, attempts, lock_until)
+                                VALUES (:user_id, :action_type, :current_time_insert, :attempts_insert, NULL)
+                                ON DUPLICATE KEY UPDATE 
+                                    last_attempt = :current_time_update,
+                                    attempts = :attempts_update,
+                                    lock_until = NULL
+                            ");
+                            $new_attempts = ($last_attempt && $hours_passed < 24) ? $attempts + 1 : 1;
+                            $stmt->execute([
+                                ':user_id' => $user['id'],
+                                ':action_type' => $action_type,
+                                ':current_time_insert' => $current_time->format('Y-m-d H:i:s'),
+                                ':attempts_insert' => $new_attempts,
+                                ':current_time_update' => $current_time->format('Y-m-d H:i:s'),
+                                ':attempts_update' => $new_attempts
                             ]);
                         }
                     }
                 }
-
-                if (empty($errors)) {
-                    // Generate a new token (overwrites existing if any)
-                    $verification_token = generateAndStoreToken($pdo, $user['id'], 'email_verification', 16, '+24 hours');
-
-                    if (!$verification_token) {
-                        $errors[] = "An error occurred while generating the verification token. Please try again later.";
-                    } else {
-                        // Send verification email
-                        sendVerificationEmail($email, $verification_token);
-                        $success = "A new verification email has been sent to your email address.";
-
-                        // Update resend attempts in user_attempts table
-                        $stmt = $pdo->prepare("
-                            INSERT INTO user_attempts (user_id, action_type, last_attempt, attempts)
-                            VALUES (:user_id, 'verification', :current_time_insert, :attempts_insert)
-                            ON DUPLICATE KEY UPDATE 
-                                last_attempt = :current_time_update,
-                                attempts = :attempts_update
-                        ");
-                        $stmt->execute([
-                            ':current_time_insert' => $current_time->format('Y-m-d H:i:s'),
-                            ':attempts_insert'     => ($last_attempt && $hours_passed < 24) ? $attempts + 1 : 1,
-                            ':current_time_update' => $current_time->format('Y-m-d H:i:s'),
-                            ':attempts_update'     => ($last_attempt && $hours_passed < 24) ? $attempts + 1 : 1,
-                            ':user_id'             => $user['id']
-                        ]);
-                    }
-                }
             }
         } else {
-            $errors[] = "No account found with that email address.";
+            if ($action === 'password_reset') {
+                // For password reset, inform user that email has been sent regardless of account existence
+                // to prevent email enumeration
+                $success = "If an account with that email exists, a password reset link has been sent.";
+            } else {
+                // For verification, inform user that no account exists
+                $errors[] = "No account found with that email address.";
+            }
         }
     }
 
@@ -838,6 +904,7 @@ function processResendVerificationForm($pdo, $email) {
         'errors'  => $errors
     ];
 }
+
 
 /**
  * Process email verification using token
@@ -859,7 +926,7 @@ function processEmailVerification($pdo, $token) {
         $stmt = $pdo->prepare("
             SELECT user_id, expires_at 
             FROM tokens 
-            WHERE token = :token AND type = 'email_verification'
+            WHERE token = :token AND type = 'verification'
             LIMIT 1
         ");
         $stmt->execute([':token' => $token]);
@@ -996,8 +1063,149 @@ function checkSecurityQuestions($pdo, $user_id) {
     
     // All answers match
     if(empty($errors)){
+        $_SESSION['can_reset_password'] = true;
         $success = true;
     }
     return ['errors' => $errors, 'success' => $success];
 }
+
+function processNewPassword($pdo, $is_security_questions = false, $user_id = null){
+    $errors = [];
+    $success = '';
+
+    // CSRF token validation
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['success' => $success, 'errors' => $errors];
+    }
+
+    // Retrieve and sanitize inputs
+    $source = $_POST['source'] ?? '';
+    $token = $_POST['token'] ?? '';
+    $new_password = $_POST['new_password'] ?? '';
+    $confirm_new_password = $_POST['confirm_new_password'] ?? '';
+
+    // Determine reset method
+    if ($is_security_questions) {
+        if (!isset($user_id)) {
+            $errors[] = "User identification error.";
+            return ['success' => $success, 'errors' => $errors];
+        }
+    } elseif (!empty($token)) {
+        // Token-based reset
+    } else {
+        $errors[] = "Invalid password reset access method.";
+        return ['success' => $success, 'errors' => $errors];
+    }
+
+    // Validate password
+    if (empty($new_password)) {
+        $errors[] = "New password is required.";
+    } elseif (strlen($new_password) < 8) {
+        $errors[] = "Password must be at least 8 characters long.";
+    } elseif (!preg_match('/[A-Z]/', $new_password)) {
+        $errors[] = "Password must contain at least one uppercase letter.";
+    } elseif (!preg_match('/[a-z]/', $new_password)) {
+        $errors[] = "Password must contain at least one lowercase letter.";
+    } elseif (!preg_match('/[0-9]/', $new_password)) {
+        $errors[] = "Password must contain at least one number.";
+    } elseif (!preg_match('/[\W]/', $new_password)) {
+        $errors[] = "Password must contain at least one special character.";
+    }
+
+    // Confirm new password
+    if (empty($confirm_new_password)) {
+        $errors[] = "Please confirm your new password.";
+    } elseif ($new_password !== $confirm_new_password) {
+        $errors[] = "New passwords do not match.";
+    }
+
+    // Proceed only if there are no validation errors
+    if (empty($errors)) {
+        try {
+            // Begin a transaction
+            $pdo->beginTransaction();
+
+            if ($is_security_questions) {
+                // Update password for authenticated user
+                $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
+
+                $update_stmt = $pdo->prepare("
+                    UPDATE users 
+                    SET password = :password 
+                    WHERE id = :user_id
+                ");
+                $update_stmt->execute([
+                    ':password' => $hashed_password,
+                    ':user_id' => $user_id
+                ]);
+            } else {
+                // Token-based password reset
+                // Fetch the token details
+                $stmt = $pdo->prepare("
+                    SELECT user_id, expires_at 
+                    FROM tokens 
+                    WHERE token = :token AND type = 'password_reset'
+                ");
+                $stmt->execute([':token' => $token]);
+                $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($token_data) {
+                    $current_time = new DateTime();
+                    $expires_at = new DateTime($token_data['expires_at']);
+
+                    // Check if the token has expired
+                    if ($current_time > $expires_at) {
+                        $errors[] = "This password reset link has expired.";
+                        $pdo->rollBack();
+                        return ['success' => $success, 'errors' => $errors];
+                    } else {
+                        $user_id = $token_data['user_id'];
+
+                        // Hash the new password using BCRYPT
+                        $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
+
+                        // Update the user's password in the database
+                        $update_stmt = $pdo->prepare("
+                            UPDATE users 
+                            SET password = :password 
+                            WHERE id = :user_id
+                        ");
+                        $update_stmt->execute([
+                            ':password' => $hashed_password,
+                            ':user_id' => $user_id
+                        ]);
+
+                        // Delete the used token to prevent reuse
+                        $delete_stmt = $pdo->prepare("
+                            DELETE FROM tokens 
+                            WHERE token = :token AND type = 'password_reset'
+                        ");
+                        $delete_stmt->execute([':token' => $token]);
+                    }
+                } else {
+                    $errors[] = "Invalid password reset token.";
+                    $pdo->rollBack();
+                    return ['success' => $success, 'errors' => $errors];
+                }
+            }
+
+            // Commit the transaction
+            $pdo->commit();
+
+            $success = "Your password has been successfully reset. You can now <a href='login.php'>log in</a> with your new password.";
+        } catch (Exception $e) {
+            // Rollback the transaction on error
+            $pdo->rollBack();
+            error_log("Password Reset Error: " . $e->getMessage());
+            $errors[] = "An error occurred while resetting your password. Please try again later.";
+        }
+    }
+
+    return [
+        'success' => $success,
+        'errors'  => $errors
+    ];
+}
+
 ?>

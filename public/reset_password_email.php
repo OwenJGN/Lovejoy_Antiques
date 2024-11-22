@@ -9,11 +9,13 @@ $success = '';
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $errors = [];
+    $success = false;
     // Retrieve and sanitize input
     $email = trim($_POST['email'] ?? '');
 
     // Process the resend verification form using the function
-    $result = sendPasswordResetEmail($pdo, $email);
+    $result = processResendVerificationOrResetForm($pdo, $email, 'password_reset');
 
     // Assign results to variables for display
     $success = $result['success'];
@@ -24,6 +26,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="main-content">
     <div class="form-container">
         <h2 class="mb-4">Send Password Reset Link</h2>
+
+        <?php if (!empty($errors)): ?>
+            <div class="alert alert-danger" role="alert">
+                <ul class="mb-0">
+                    <?php foreach ($errors as $error): ?>
+                        <li><?php echo escape($error); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($success)): ?>
+            <div class="alert alert-success" role="alert">
+                <?php echo escape($success); ?>
+            </div>
+        <?php endif; ?>
 
         <!-- Resend Verification Form -->
         <form action="reset_password_email.php" method="POST" novalidate>

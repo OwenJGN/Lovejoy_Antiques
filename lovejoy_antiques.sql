@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 5.2.1
+-- version 5.2.0
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 19, 2024 at 06:31 PM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+-- Generation Time: Nov 22, 2024 at 03:44 AM
+-- Server version: 10.4.25-MariaDB
+-- PHP Version: 8.1.10
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -34,7 +34,7 @@ CREATE TABLE `evaluation_requests` (
   `preferred_contact` enum('phone','email') NOT NULL,
   `photo` varchar(255) DEFAULT NULL,
   `request_date` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
 
@@ -45,7 +45,7 @@ CREATE TABLE `evaluation_requests` (
 CREATE TABLE `security_questions` (
   `id` int(11) NOT NULL,
   `question` text NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `security_questions`
@@ -73,17 +73,18 @@ CREATE TABLE `tokens` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `token` varchar(255) NOT NULL,
-  `type` enum('email_verification','password_reset') NOT NULL,
+  `type` enum('verification','password_reset') NOT NULL,
   `expires_at` datetime NOT NULL,
   `created_at` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `tokens`
 --
 
 INSERT INTO `tokens` (`id`, `user_id`, `token`, `type`, `expires_at`, `created_at`) VALUES
-(71, 3, 'dd95a5e5c481e57fc04330eebfda5fb9', 'email_verification', '2024-11-14 23:38:52', '2024-11-13 22:38:52');
+(71, 3, 'dd95a5e5c481e57fc04330eebfda5fb9', '', '2024-11-14 23:38:52', '2024-11-13 22:38:52'),
+(86, 9, '71782cd82e265bcca8611f4ed3997b4b', 'verification', '2024-11-23 02:35:13', '2024-11-22 01:35:13');
 
 -- --------------------------------------------------------
 
@@ -100,7 +101,7 @@ CREATE TABLE `users` (
   `is_admin` tinyint(1) DEFAULT 0,
   `registered_at` datetime DEFAULT current_timestamp(),
   `is_verified` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `users`
@@ -109,7 +110,8 @@ CREATE TABLE `users` (
 INSERT INTO `users` (`id`, `name`, `email`, `password`, `phone`, `is_admin`, `registered_at`, `is_verified`) VALUES
 (2, 'Admin', 'admin_lovejoy@gmail.com', '$2y$10$ImGnvIneaWio9LHNArp7uuQjQJSKehFXX9kgVMCVoa8axcK5mn6Bi', '07712457812', 1, '2024-11-13 14:33:49', 1),
 (3, 'Bill Nye', 'billnye123@gmail.com', '$2y$10$SjvObCRtBHo/pu9VZ5DGYeIitydFnMSUMVYb96hFoclX4Oe9y2tCe', '077481659745', 0, '2024-11-13 22:38:52', 1),
-(7, 'Owen', 'owenjgibson@gmail.com', '$2y$10$2QLc/a/BPnr6tYTxy1keYu5EQsjtksQRetyB44m7v7Zjm83wuNgP2', '07762748220', 0, '2024-11-19 17:17:02', 1);
+(9, 'Owen Gibson', 'owenjgibsn@gmail.com', '$2y$10$iHfDlJPQzu2K8BfXgOEt1eb7.btIrLWuCU63mjD23V2jDoIw9153e', '07762748219', 0, '2024-11-22 01:35:13', 0),
+(10, 'Owen Gibson', 'owenjgibson@gmail.com', '$2y$10$LxFNd1h9/gV7r.HPV0fxUeIOUvvUx/tJBk9JKdLvhGYh/YjdP.9U.', '07762748219', 0, '2024-11-22 02:28:48', 1);
 
 -- --------------------------------------------------------
 
@@ -121,11 +123,18 @@ CREATE TABLE `user_attempts` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
-  `action_type` enum('login','verification') NOT NULL,
+  `action_type` enum('login','verification','password_reset') NOT NULL,
   `attempts` int(11) NOT NULL DEFAULT 0,
   `last_attempt` datetime DEFAULT NULL,
   `lock_until` datetime DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `user_attempts`
+--
+
+INSERT INTO `user_attempts` (`id`, `user_id`, `ip_address`, `action_type`, `attempts`, `last_attempt`, `lock_until`) VALUES
+(33, 9, NULL, 'login', 2, '2024-11-22 01:37:49', NULL);
 
 -- --------------------------------------------------------
 
@@ -137,16 +146,19 @@ CREATE TABLE `user_security_questions` (
   `user_id` int(11) NOT NULL,
   `security_question_id` int(11) NOT NULL,
   `security_answer` varchar(255) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `user_security_questions`
 --
 
 INSERT INTO `user_security_questions` (`user_id`, `security_question_id`, `security_answer`) VALUES
-(7, 1, '$2y$10$uNRwwsiExncivRkDuARH2eJeQjjif/23NyZYIGHhB4fgvqbv7Wp4a'),
-(7, 4, '$2y$10$fumBeHUUTf9ib.0ZwSh3meULjuEBY57otK6KfK87CaUqZ0sLCr/LK'),
-(7, 8, '$2y$10$8L5sujrKoRVTlfN2DNpZoOjMhumiKO2gCqt8nwTo7TnBtRbmCgFbW');
+(9, 4, '$2y$10$CCqVelo4JNB56.K96DMqbO.NUIcbj5Kzkt1pbzQ2QXzbCQLa7Gpkm'),
+(9, 5, '$2y$10$UJ.h.rLzeYO7jqHQoXeZqu1pRnRHN03NuiJ5PrKG4Ka6HRJstGQ4K'),
+(9, 6, '$2y$10$n0edtYzL0uV1QLO1FF50IOgnmCE24W72icm6O9yttkdey4on/.8Di'),
+(10, 1, '$2y$10$Fd/nW3UV9/eEB0V1khR0je7lranZ8VDtkYFdF3mGBer7qktqF7KSe'),
+(10, 4, '$2y$10$XcJMtWDo7sE.J9fF0gwIJewf1yQcltPYVGsjpK000IATil.r6zqfy'),
+(10, 8, '$2y$10$dNXVnSTzzCpqqS46lWzZaOsXn6a5pur7Lc9bCcbw7/ZeIafCaVsgK');
 
 --
 -- Indexes for dumped tables
@@ -215,19 +227,19 @@ ALTER TABLE `security_questions`
 -- AUTO_INCREMENT for table `tokens`
 --
 ALTER TABLE `tokens`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=78;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=107;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `user_attempts`
 --
 ALTER TABLE `user_attempts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=54;
 
 --
 -- Constraints for dumped tables
