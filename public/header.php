@@ -45,7 +45,7 @@ $csrf_token = generateCsrfToken();
     <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg navbar-custom shadow-sm">
         <div class="container">
-            <a class="navbar-brand" href="index.php">Lovejoy’s Antique</a>
+            <a class="navbar-brand" href="index.php">Lovejoy’s Antiques</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
                 aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -59,13 +59,14 @@ $csrf_token = generateCsrfToken();
                         <li class="nav-item">
                             <a class="nav-link" href="view_account.php">Your Account</a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="request_evaluation.php">Request Evaluation</a>
-                        </li>
 
                         <?php if ($isAdmin): ?>
                             <li class="nav-item">
                                 <a class="nav-link" href="admin_requests.php">View Requests</a>
+                            </li>
+                        <?php else: ?>
+                            <li class="nav-item">
+                                <a class="nav-link" href="request_evaluation.php">Request Evaluation</a>
                             </li>
                         <?php endif; ?>
                         <li class="nav-item">

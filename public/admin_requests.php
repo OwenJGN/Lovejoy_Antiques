@@ -2,7 +2,7 @@
 require_once 'header.php';
 require_once '..\includes\functions.php';
 
-//Check if user is logged in and is admin
+// Check if user is logged in and is admin
 checkAccess('admin');
 
 // Fetch evaluation requests from the database
@@ -12,13 +12,12 @@ if ($requests === false) {
 }
 ?>
 
-<!-- Main Content Area -->
 <div class="container my-4">
     <h2 class="mb-4">Evaluation Requests</h2>
 
     <?php if (isset($error_message)): ?>
         <div class="alert alert-danger" role="alert">
-            <?php echo escape($error_message); ?>
+            <?php echo htmlspecialchars($error_message); ?>
         </div>
     <?php else: ?>
         <div class="table-responsive">
@@ -43,22 +42,20 @@ if ($requests === false) {
                     <?php else: ?>
                         <?php foreach ($requests as $request): ?>
                             <tr>
-                                <th scope="row"><?php echo escape($request['id']); ?></th>
-                                <td><?php echo escape($request['name']); ?></td>
-                                <td><?php echo escape($request['email']); ?></td>
-                                <td><?php echo escape($request['phone']); ?></td>
-                                <td><?php echo nl2br(escape($request['details'])); ?></td>
-                                <td><?php echo ucfirst(escape($request['preferred_contact'])); ?></td>
+                                <th scope="row"><?php echo htmlspecialchars($request['id']); ?></th>
+                                <td><?php echo htmlspecialchars($request['name']); ?></td>
+                                <td><?php echo htmlspecialchars($request['email']); ?></td>
+                                <td><?php echo htmlspecialchars($request['phone']); ?></td>
+                                <td><?php echo nl2br(htmlspecialchars($request['details'])); ?></td>
+                                <td><?php echo ucfirst(htmlspecialchars($request['preferred_contact'])); ?></td>
                                 <td>
-                                    <?php if (!empty($request['photo'])): ?>
-                                        <a href="uploads/<?php echo escape($request['photo']); ?>" target="_blank">
-                                            <img src="uploads/<?php echo escape($request['photo']); ?>" alt="Antique Photo" width="100">
-                                        </a>
+                                    <?php if (!empty($request['decrypted_photo'])): ?>
+                                        <img src="data:image/png;base64,<?php echo $request['decrypted_photo']; ?>" alt="Antique Photo" width="100">
                                     <?php else: ?>
                                         <span>No Photo</span>
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo escape($request['request_date']); ?></td>
+                                <td><?php echo htmlspecialchars($request['request_date']); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>

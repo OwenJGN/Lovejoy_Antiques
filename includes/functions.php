@@ -13,5 +13,6 @@ require_once 'email.php';
 require_once 'security.php';
 require_once 'evaluation_requests.php';
 require_once 'utilities.php';
+require_once 'file_upload.php';
 
 ?>

@@ -9,13 +9,13 @@ function registerUser($pdo, $name, $email, $password, $phone,
                       $security_question_2, $security_answer_2, 
                       $security_question_3, $security_answer_3) {
     try {
-        // Hash the password using BCRYPT
-        $hashed_password = password_hash($password, PASSWORD_BCRYPT);
-
-        // Hash the security answers using BCRYPT
-        $hashed_answer_1 = password_hash($security_answer_1, PASSWORD_BCRYPT);
-        $hashed_answer_2 = password_hash($security_answer_2, PASSWORD_BCRYPT);
-        $hashed_answer_3 = password_hash($security_answer_3, PASSWORD_BCRYPT);
+        // Hash the password and security answers
+        $hashed_password = hashData($password);
+        $hashed_answers = [
+            hashData($security_answer_1),
+            hashData($security_answer_2),
+            hashData($security_answer_3)
+        ];
 
         // Begin a transaction
         $pdo->beginTransaction();
@@ -35,36 +35,17 @@ function registerUser($pdo, $name, $email, $password, $phone,
         // Get the inserted user's ID
         $user_id = $pdo->lastInsertId();
 
-        // Prepare the INSERT statement for user_security_questions
-        $stmt = $pdo->prepare("
-            INSERT INTO user_security_questions (user_id, security_question_id, security_answer) 
-            VALUES (:user_id, :security_question_id, :security_answer)
-        ");
-
-        // Insert Security Question 1
-        $stmt->execute([
-            ':user_id' => $user_id,
-            ':security_question_id' => $security_question_1,
-            ':security_answer' => $hashed_answer_1
-        ]);
-
-        // Insert Security Question 2
-        $stmt->execute([
-            ':user_id' => $user_id,
-            ':security_question_id' => $security_question_2,
-            ':security_answer' => $hashed_answer_2
-        ]);
-
-        // Insert Security Question 3
-        $stmt->execute([
-            ':user_id' => $user_id,
-            ':security_question_id' => $security_question_3,
-            ':security_answer' => $hashed_answer_3
+        // Insert all security questions
+        insertSecurityQuestions($pdo, $user_id, [
+            ['id' => $security_question_1, 'answer' => $hashed_answers[0]],
+            ['id' => $security_question_2, 'answer' => $hashed_answers[1]],
+            ['id' => $security_question_3, 'answer' => $hashed_answers[2]]
         ]);
 
         // Commit the transaction
         $pdo->commit();
 
+        // Generate and send verification token
         $token = generateAndStoreToken($pdo, $user_id, 'verification', 16, '+24 hours');
         sendVerificationEmail($email, $token);
         
@@ -77,90 +58,93 @@ function registerUser($pdo, $name, $email, $password, $phone,
         return "An error occurred while registering. Please try again later.";
     }
 }
+
+/**
+ * Fetch all security questions
+ */
 function fetchSecurityQuestions($pdo) {
     $stmt = $pdo->prepare("SELECT id, question FROM security_questions ORDER BY question ASC");
     $stmt->execute();
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+/**
+ * Check if an email already exists
+ */
 function emailExists($pdo, $email) {
     $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
     $stmt->execute([':email' => $email]);
     return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
 }
 
+/**
+ * Fetch user's security questions
+ */
 function fetchUserSecurityQuestions($pdo, $user_id) {
-    
-    $stmt = $pdo->prepare("SELECT 
-        sq.id AS id,
-        sq.question AS question
-    FROM 
-        security_questions sq
-    INNER JOIN 
-        user_security_questions usq 
-        ON sq.id = usq.security_question_id
-    WHERE 
-        usq.user_id = :user_id
-    ORDER BY 
-        sq.id DESC");
+    $stmt = $pdo->prepare("
+        SELECT sq.id AS id, sq.question AS question
+        FROM security_questions sq
+        INNER JOIN user_security_questions usq 
+            ON sq.id = usq.security_question_id
+        WHERE usq.user_id = :user_id
+        ORDER BY sq.id DESC
+    ");
 
     $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-
+/**
+ * Fetch user's hashed security answers
+ */
 function fetchUserSecurityAnswers($pdo, $user_id){
-    $stmt = $pdo->prepare("SELECT security_answer as hashed_answer FROM user_security_questions WHERE user_id = :user_id ORDER BY security_question_id DESC");
+    $stmt = $pdo->prepare("
+        SELECT security_answer as hashed_answer 
+        FROM user_security_questions 
+        WHERE user_id = :user_id 
+        ORDER BY security_question_id DESC
+    ");
 
     $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
+/**
+ * Check security questions and validate answers
+ */
 function checkSecurityQuestions($pdo, $user_id) {
     $errors = [];
     $success = false;
+
+    // Validate CSRF token
     if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
         $errors[] = "Invalid CSRF token.";
         return ['errors' => $errors, 'success' => $success];
     }
-    // Fetch stored security questions and hashed answers
-    $stored_questions = fetchUserSecurityAnswers($pdo, $user_id);
+
+    // Fetch stored security answers
+    $stored_answers = fetchUserSecurityAnswers($pdo, $user_id);
     
-    $security_answer_1 = strtolower(trim($_POST['security_answer_1'] ?? '')); // Lowercased
-    $security_answer_2 = strtolower(trim($_POST['security_answer_2'] ?? '')); // Lowercased
-    $security_answer_3 = strtolower(trim($_POST['security_answer_3'] ?? '')); // Lowercased
+    // Retrieve and sanitize user-provided answers
+    $provided_answers = [
+        strtolower(trim($_POST['security_answer_1'] ?? '')),
+        strtolower(trim($_POST['security_answer_2'] ?? '')),
+        strtolower(trim($_POST['security_answer_3'] ?? ''))
+    ];
 
-    if (empty($security_answer_1)) {
-        $errors[] = "Answer to Security Question 1 is required.";
-    } 
-
-    if (empty($security_answer_2)) {
-        $errors[] = "Answer to Security Question 2 is required.";
-    } 
-
-    if (empty($security_answer_3)) {
-        $errors[] = "Answer to Security Question 3 is required.";
-    } 
+    // Validate that all answers are provided
+    foreach ($provided_answers as $index => $answer) {
+        if (empty($answer)) {
+            $errors[] = "Answer to Security Question " . ($index + 1) . " is required.";
+        }
+    }
 
     if(empty($errors)){
-        // Iterate through each stored question and verify the corresponding answer
-        foreach ($stored_questions as $index => $question) {
-            $currentAnswer = '';
-            if($index == 0){
-                $currentAnswer = $security_answer_1;
-            } 
-            elseif($index == 1){
-                $currentAnswer = $security_answer_2;
-            }            
-            elseif($index == 2){
-                $currentAnswer = $security_answer_3;
-            }
-
-            
-            // Verify the provided answer against the hashed answer
-            if (!password_verify($currentAnswer, $question['hashed_answer'])) {
-                // Answer does not match
+        // Verify each provided answer against the stored hashed answer
+        foreach ($stored_answers as $index => $stored) {
+            if (!password_verify($provided_answers[$index], $stored['hashed_answer'])) {
                 $errors[] = "Incorrect answer to the security question/s.";
                 return ['errors' => $errors, 'success' => $success];
             }
@@ -175,11 +159,14 @@ function checkSecurityQuestions($pdo, $user_id) {
     return ['errors' => $errors, 'success' => $success];
 }
 
+/**
+ * Process the new password reset
+ */
 function processNewPassword($pdo, $is_security_questions = false, $user_id = null){
     $errors = [];
     $success = '';
 
-    // CSRF token validation
+    // Validate CSRF token
     if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
         $errors[] = "Invalid CSRF token.";
         return ['success' => $success, 'errors' => $errors];
@@ -204,20 +191,9 @@ function processNewPassword($pdo, $is_security_questions = false, $user_id = nul
         return ['success' => $success, 'errors' => $errors];
     }
 
-    // Validate password
-    if (empty($new_password)) {
-        $errors[] = "New password is required.";
-    } elseif (strlen($new_password) < 8) {
-        $errors[] = "Password must be at least 8 characters long.";
-    } elseif (!preg_match('/[A-Z]/', $new_password)) {
-        $errors[] = "Password must contain at least one uppercase letter.";
-    } elseif (!preg_match('/[a-z]/', $new_password)) {
-        $errors[] = "Password must contain at least one lowercase letter.";
-    } elseif (!preg_match('/[0-9]/', $new_password)) {
-        $errors[] = "Password must contain at least one number.";
-    } elseif (!preg_match('/[\W]/', $new_password)) {
-        $errors[] = "Password must contain at least one special character.";
-    }
+    // Validate the new password
+    $password_errors = validatePassword($new_password);
+    $errors = array_merge($errors, $password_errors);
 
     // Confirm new password
     if (empty($confirm_new_password)) {
@@ -234,61 +210,23 @@ function processNewPassword($pdo, $is_security_questions = false, $user_id = nul
 
             if ($is_security_questions) {
                 // Update password for authenticated user
-                $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
-
-                $update_stmt = $pdo->prepare("
-                    UPDATE users 
-                    SET password = :password 
-                    WHERE id = :user_id
-                ");
-                $update_stmt->execute([
-                    ':password' => $hashed_password,
-                    ':user_id' => $user_id
-                ]);
+                updateUserPassword($pdo, $user_id, $new_password);
             } else {
                 // Token-based password reset
-                // Fetch the token details
-                $stmt = $pdo->prepare("
-                    SELECT user_id, expires_at 
-                    FROM tokens 
-                    WHERE token = :token AND type = 'password_reset'
-                ");
-                $stmt->execute([':token' => $token]);
-                $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
+                $token_data = getTokenData($pdo, $token, 'password_reset');
 
                 if ($token_data) {
-                    $current_time = new DateTime();
-                    $expires_at = new DateTime($token_data['expires_at']);
-
-                    // Check if the token has expired
-                    if ($current_time > $expires_at) {
+                    if (isTokenExpired($token_data['expires_at'])) {
                         $errors[] = "This password reset link has expired.";
                         $pdo->rollBack();
                         return ['success' => $success, 'errors' => $errors];
-                    } else {
-                        $user_id = $token_data['user_id'];
-
-                        // Hash the new password using BCRYPT
-                        $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
-
-                        // Update the user's password in the database
-                        $update_stmt = $pdo->prepare("
-                            UPDATE users 
-                            SET password = :password 
-                            WHERE id = :user_id
-                        ");
-                        $update_stmt->execute([
-                            ':password' => $hashed_password,
-                            ':user_id' => $user_id
-                        ]);
-
-                        // Delete the used token to prevent reuse
-                        $delete_stmt = $pdo->prepare("
-                            DELETE FROM tokens 
-                            WHERE token = :token AND type = 'password_reset'
-                        ");
-                        $delete_stmt->execute([':token' => $token]);
                     }
+
+                    $user_id = $token_data['user_id'];
+                    updateUserPassword($pdo, $user_id, $new_password);
+
+                    // Delete the used token to prevent reuse
+                    deleteToken($pdo, $token, 'password_reset');
                 } else {
                     $errors[] = "Invalid password reset token.";
                     $pdo->rollBack();
@@ -312,5 +250,103 @@ function processNewPassword($pdo, $is_security_questions = false, $user_id = nul
         'success' => $success,
         'errors'  => $errors
     ];
+}
+
+/**
+ * Hash data using BCRYPT
+ */
+function hashData($data) {
+    return password_hash($data, PASSWORD_BCRYPT);
+}
+
+/**
+ * Insert multiple security questions for a user
+ */
+function insertSecurityQuestions($pdo, $user_id, $questions) {
+    $stmt = $pdo->prepare("
+        INSERT INTO user_security_questions (user_id, security_question_id, security_answer) 
+        VALUES (:user_id, :security_question_id, :security_answer)
+    ");
+    foreach ($questions as $q) {
+        $stmt->execute([
+            ':user_id' => $user_id,
+            ':security_question_id' => $q['id'],
+            ':security_answer' => $q['answer']
+        ]);
+    }
+}
+
+/**
+ * Validate password strength
+ */
+function validatePassword($password) {
+    $errors = [];
+    if (empty($password)) {
+        $errors[] = "New password is required.";
+    } elseif (strlen($password) < 8) {
+        $errors[] = "Password must be at least 8 characters long.";
+    } 
+    if (!preg_match('/[A-Z]/', $password)) {
+        $errors[] = "Password must contain at least one uppercase letter.";
+    }
+    if (!preg_match('/[a-z]/', $password)) {
+        $errors[] = "Password must contain at least one lowercase letter.";
+    }
+    if (!preg_match('/[0-9]/', $password)) {
+        $errors[] = "Password must contain at least one number.";
+    }
+    if (!preg_match('/[\W]/', $password)) {
+        $errors[] = "Password must contain at least one special character.";
+    }
+    return $errors;
+}
+
+/**
+ * Update user's password in the database
+ */
+function updateUserPassword($pdo, $user_id, $new_password) {
+    $hashed_password = hashData($new_password);
+    $update_stmt = $pdo->prepare("
+        UPDATE users 
+        SET password = :password 
+        WHERE id = :user_id
+    ");
+    $update_stmt->execute([
+        ':password' => $hashed_password,
+        ':user_id' => $user_id
+    ]);
+}
+
+/**
+ * Retrieve token data from the database
+ */
+function getTokenData($pdo, $token, $type) {
+    $stmt = $pdo->prepare("
+        SELECT user_id, expires_at 
+        FROM tokens 
+        WHERE token = :token AND type = :type
+    ");
+    $stmt->execute([':token' => $token, ':type' => $type]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Check if a token has expired
+ */
+function isTokenExpired($expires_at) {
+    $current_time = new DateTime();
+    $expiration_time = new DateTime($expires_at);
+    return $current_time > $expiration_time;
+}
+
+/**
+ * Delete a token from the database
+ */
+function deleteToken($pdo, $token, $type) {
+    $delete_stmt = $pdo->prepare("
+        DELETE FROM tokens 
+        WHERE token = :token AND type = :type
+    ");
+    $delete_stmt->execute([':token' => $token, ':type' => $type]);
 }
 ?>

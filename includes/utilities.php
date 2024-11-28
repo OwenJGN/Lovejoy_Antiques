@@ -37,7 +37,7 @@ function processLoginForm(PDO $pdo): array {
 
     // Fetch user details if email is provided
     if (!empty($email)) {
-        $stmt = $pdo->prepare("SELECT id, password, is_verified, name FROM users WHERE email = :email LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, password, is_verified, is_admin, name FROM users WHERE email = :email LIMIT 1");
         $stmt->execute([':email' => $email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($user) {
@@ -107,10 +107,13 @@ function processLoginForm(PDO $pdo): array {
         if (password_verify($password, $user['password'])) {
             if ($user['is_verified'] != 1) {
                 $errors[] = "Your email is not verified. Please verify your email.";
-                // Optionally, you can increment login attempts here
                 return $errors;
             } else {
                 // Credentials are correct, proceed to handle 2FA
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['user_name'] = $user['name'];
+                $_SESSION['is_admin'] = $user['is_admin'];
+
                 $two_fa_errors = handle2FA($pdo, $user_id);
                 if (!empty($two_fa_errors)) {
                     // If there are errors in handling 2FA, return them

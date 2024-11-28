@@ -1,5 +1,6 @@
 <?php
 require_once 'functions.php';
+
 /**
  * Escape output to prevent XSS
  */
@@ -7,115 +8,102 @@ function escape($html) {
     return htmlspecialchars($html, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
 }
 
-function resetLoginAttempts(PDO $pdo, ?int $user_id = null){
+/**
+ * Reset login attempts for a user or IP address
+ */
+function resetLoginAttempts(PDO $pdo, ?int $user_id = null, ?string $ip_address = null){
     try {
-        if ($user_id) {
+        if ($user_id !== null) {
             // Delete user-based login attempts
             $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE user_id = :user_id AND action_type = 'login'");
             $stmt->execute([':user_id' => $user_id]);
 
             error_log("Login attempts reset for user ID {$user_id}.");
-        }
-
-        else {
+        } elseif ($ip_address !== null) {
             // Delete IP-based login attempts
             $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE ip_address = :ip_address AND action_type = 'login'");
             $stmt->execute([':ip_address' => $ip_address]);
 
             error_log("Login attempts reset for IP address {$ip_address}.");
+        } else {
+            error_log("No user ID or IP address provided to resetLoginAttempts.");
         }
     } catch (PDOException $e) {
         error_log("Error resetting login attempts: " . $e->getMessage());
     }
 }
 
+/**
+ * Increment login attempts for a user or IP address
+ */
 function incrementLoginAttempts(PDO $pdo, ?int $user_id, string $ip_address, string $action_type = 'login'): void {
     try {
-        if ($user_id) {
-            // Fetch existing attempt record
-            $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE user_id = :user_id AND action_type = :action_type LIMIT 1");
-            $stmt->execute([
-                ':user_id' => $user_id,
-                ':action_type' => $action_type
-            ]);
-            $record = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($record) {
-                // Increment attempts
-                $new_attempts = $record['attempts'] + 1;
-                $update_stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW() WHERE id = :id");
-                $update_stmt->execute([
-                    ':attempts' => $new_attempts,
-                    ':id' => $record['id']
-                ]);
-
-                // Lock account if attempts exceed threshold (e.g., 5 attempts)
-                if ($new_attempts >= 5) {
-                    $lock_duration = '+30 minutes'; // Lock for 30 minutes
-                    $lock_until = date('Y-m-d H:i:s', strtotime($lock_duration));
-                    $lock_stmt = $pdo->prepare("UPDATE user_attempts SET lock_until = :lock_until WHERE id = :id");
-                    $lock_stmt->execute([
-                        ':lock_until' => $lock_until,
-                        ':id' => $record['id']
-                    ]);
-
-                    error_log("User ID {$user_id} has been locked out until {$lock_until} due to multiple failed login attempts.");
-                }
-            } else {
-                // Create new attempt record
-                $insert_stmt = $pdo->prepare("
-                    INSERT INTO user_attempts (user_id, action_type, attempts, last_attempt)
-                    VALUES (:user_id, :action_type, 1, NOW())
-                ");
-                $insert_stmt->execute([
-                    ':user_id' => $user_id,
-                    ':action_type' => $action_type
-                ]);
-            }
+        if ($user_id !== null) {
+            handleLoginAttempt($pdo, 'user', $user_id, $action_type, 5, "User ID {$user_id}");
         } else {
-            // Handle attempts based on IP address for non-existing users
-            $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE ip_address = :ip_address AND action_type = :action_type LIMIT 1");
-            $stmt->execute([
-                ':ip_address' => $ip_address,
-                ':action_type' => $action_type
-            ]);
-            $record = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($record) {
-                // Increment attempts
-                $new_attempts = $record['attempts'] + 1;
-                $update_stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW() WHERE id = :id");
-                $update_stmt->execute([
-                    ':attempts' => $new_attempts,
-                    ':id' => $record['id']
-                ]);
-
-                // Lock IP if attempts exceed threshold (e.g., 10 attempts)
-                if ($new_attempts >= 10) {
-                    $lock_duration = '+30 minutes'; // Lock for 30 minutes
-                    $lock_until = date('Y-m-d H:i:s', strtotime($lock_duration));
-                    $lock_stmt = $pdo->prepare("UPDATE user_attempts SET lock_until = :lock_until WHERE id = :id");
-                    $lock_stmt->execute([
-                        ':lock_until' => $lock_until,
-                        ':id' => $record['id']
-                    ]);
-
-                    error_log("IP Address {$ip_address} has been locked out until {$lock_until} due to multiple failed login attempts.");
-                }
-            } else {
-                // Create new attempt record
-                $insert_stmt = $pdo->prepare("
-                    INSERT INTO user_attempts (ip_address, action_type, attempts, last_attempt)
-                    VALUES (:ip_address, :action_type, 1, NOW())
-                ");
-                $insert_stmt->execute([
-                    ':ip_address' => $ip_address,
-                    ':action_type' => $action_type
-                ]);
-            }
+            handleLoginAttempt($pdo, 'ip', $ip_address, $action_type, 10, "IP Address {$ip_address}");
         }
     } catch (PDOException $e) {
         error_log("Database Error in incrementLoginAttempts: " . $e->getMessage());
+    }
+}
+
+/**
+ * Handle login attempts for user or IP
+ */
+function handleLoginAttempt(PDO $pdo, string $type, $identifier, string $action_type, int $threshold, string $log_identifier): void {
+    $field = ($type === 'user') ? 'user_id' : 'ip_address';
+
+    // Fetch existing attempt record
+    $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE {$field} = :identifier AND action_type = :action_type LIMIT 1");
+    $stmt->execute([
+        ':identifier' => $identifier,
+        ':action_type' => $action_type
+    ]);
+    $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($record) {
+        // Increment attempts
+        $new_attempts = $record['attempts'] + 1;
+        $update_stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW() WHERE id = :id");
+        $update_stmt->execute([
+            ':attempts' => $new_attempts,
+            ':id' => $record['id']
+        ]);
+
+        // Lock account or IP if attempts exceed threshold
+        if ($new_attempts >= $threshold) {
+            $lock_duration = '+30 minutes'; // Lock for 30 minutes
+            $lock_until = date('Y-m-d H:i:s', strtotime($lock_duration));
+            $lock_stmt = $pdo->prepare("UPDATE user_attempts SET lock_until = :lock_until WHERE id = :id");
+            $lock_stmt->execute([
+                ':lock_until' => $lock_until,
+                ':id' => $record['id']
+            ]);
+
+            error_log("{$log_identifier} has been locked out until {$lock_until} due to multiple failed login attempts.");
+        }
+    } else {
+        // Create new attempt record
+        if ($type === 'user') {
+            $insert_stmt = $pdo->prepare("
+                INSERT INTO user_attempts (user_id, action_type, attempts, last_attempt)
+                VALUES (:user_id, :action_type, 1, NOW())
+            ");
+            $insert_stmt->execute([
+                ':user_id' => $identifier,
+                ':action_type' => $action_type
+            ]);
+        } else {
+            $insert_stmt = $pdo->prepare("
+                INSERT INTO user_attempts (ip_address, action_type, attempts, last_attempt)
+                VALUES (:ip_address, :action_type, 1, NOW())
+            ");
+            $insert_stmt->execute([
+                ':ip_address' => $identifier,
+                ':action_type' => $action_type
+            ]);
+        }
     }
 }
 

@@ -12,30 +12,51 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 /**
- * Send verification email using PHPMailer
- */
-function sendVerificationEmail($email, $verification_token) {
-    // Create a new PHPMailer instance
+ * Initialize and configure the PHPMailer instance.
+*/
+function initializeMailer() {
     $mail = new PHPMailer(true);
     try {
         // Server settings
         $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com'; // Gmail SMTP server
+        $mail->Host       = 'smtp.gmail.com'; 
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'lovejoyantiques262924'; // Your Gmail address
-        $mail->Password   = 'ehfi dtpo fucz jmkl'; // Your Gmail App Password
+        $mail->Username   = 'lovejoyantiques262924'; 
+        $mail->Password   = 'ehfi dtpo fucz jmkl'; 
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587; // Gmail SMTP port
+        $mail->Port       = 587; 
 
         // Recipients
-        $mail->setFrom('no-reply@lovejoy.antiques.com', 'Lovejoy Antiques'); // Replace with your sender info
-        $mail->addAddress($email); // Add a recipient
-
-        // Content
+        $mail->setFrom('no-reply@lovejoy.antiques.com', 'Lovejoy Antiques'); 
         $mail->isHTML(true);
+    } catch (Exception $e) {
+        error_log("Mailer initialization failed. Mailer Error: {$mail->ErrorInfo}");
+        return false;
+    }
+    return $mail;
+}
+
+/**
+ * Send verification email using PHPMailer.
+ */
+function sendVerificationEmail($email, $verification_token) {
+    $mail = initializeMailer();
+    if (!$mail) {
+        return false;
+    }
+
+    try {
+        // Add recipient
+        $mail->addAddress($email);
+
+        // Email subject
         $mail->Subject = 'Verify Your Email Address';
+
+        // Verification link
         $verification_link = "http://localhost/lovejoy_antiques/public/verify_email.php?token=" . urlencode($verification_token);
-        $mail->Body    = "
+
+        // Email body
+        $mail->Body = "
             <html>
             <head>
                 <title>Verify Your Email Address</title>
@@ -48,38 +69,37 @@ function sendVerificationEmail($email, $verification_token) {
             </html>
         ";
 
+        // Send the email
         $mail->send();
-        // Optionally, log that the email was sent successfully
     } catch (Exception $e) {
         error_log("Verification Email could not be sent to $email. Mailer Error: {$mail->ErrorInfo}");
         return false;
     }
-    return true;
 
+    return true;
 }
 
+/**
+ * Send password reset email using PHPMailer.
+ */
 function sendPasswordResetEmail($email, $reset_token) {
-    // Create a new PHPMailer instance
-    $mail = new PHPMailer(true);
-    try {
-        // Server settings
-        $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com'; // Gmail SMTP server
-        $mail->SMTPAuth   = true;
-        $mail->Username   = 'lovejoyantiques262924'; // Your Gmail address
-        $mail->Password   = 'ehfi dtpo fucz jmkl'; // Your Gmail App Password
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587; // Gmail SMTP port
+    $mail = initializeMailer();
+    if (!$mail) {
+        return false;
+    }
 
-        // Recipients
-        $mail->setFrom('no-reply@lovejoy.antiques.com', 'Lovejoy Antiques'); // Replace with your sender info
+    try {
+        // Add recipient
         $mail->addAddress($email);
 
-        // Content
-        $mail->isHTML(true);
+        // Email subject
         $mail->Subject = 'Password Reset Request';
+
+        // Reset link
         $reset_link = "http://localhost/lovejoy_antiques/public/reset_password.php?token=" . urlencode($reset_token);
-        $mail->Body    = "
+
+        // Email body
+        $mail->Body = "
             <html>
             <head>
                 <title>Password Reset Request</title>
@@ -94,36 +114,34 @@ function sendPasswordResetEmail($email, $reset_token) {
             </html>
         ";
 
+        // Send the email
         $mail->send();
-
-        // Optionally, log that the email was sent successfully
     } catch (Exception $e) {
         error_log("Password Reset Email could not be sent to $email. Mailer Error: {$mail->ErrorInfo}");
         return false;
     }
+
     return true;
 }
+
+/**
+ * Send 2FA code email using PHPMailer.
+ */
 function send2FACodeEmail(string $email, string $code){
-    $mail = new PHPMailer(true);
-    
+    $mail = initializeMailer();
+    if (!$mail) {
+        return false;
+    }
+
     try {
-        // Server settings
-        $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com'; // Gmail SMTP server
-        $mail->SMTPAuth   = true;
-        $mail->Username   = 'lovejoyantiques262924'; // Your Gmail address
-        $mail->Password   = 'ehfi dtpo fucz jmkl'; // Your Gmail App Password
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587; // Gmail SMTP port
-    
-        // Recipients
-        $mail->setFrom('no-reply@lovejoy.antiques.com', 'Lovejoy Antiques'); // Replace with your sender info
+        // Add recipient
         $mail->addAddress($email);
-    
-        // Content
-        $mail->isHTML(true);
+
+        // Email subject
         $mail->Subject = 'Your 2FA Code for Lovejoy Antiques';
-        $mail->Body    = "
+
+        // Email body
+        $mail->Body = "
             <html>
             <head>
                 <title>2FA Code</title>
@@ -137,7 +155,8 @@ function send2FACodeEmail(string $email, string $code){
             </body>
             </html>
         ";
-    
+
+        // Send the email
         $mail->send();
         return true;
     } catch (Exception $e) {
@@ -145,7 +164,5 @@ function send2FACodeEmail(string $email, string $code){
         return false;
     }
 }
-
-
 
 ?>
