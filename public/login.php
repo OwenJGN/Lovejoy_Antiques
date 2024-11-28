@@ -1,11 +1,15 @@
 <?php
+// login.php
+
 require_once 'header.php';
 require_once '..\includes\functions.php';
 require_once '..\includes\config.php';
 
 // Redirect if already logged in
-checkAccess('user');
-
+if (isLoggedIn()) {
+    header('Location: index.php');
+    exit();
+}
 
 // Initialize variables
 $errors = [];
@@ -13,6 +17,7 @@ $show_captcha = false;
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Process the login form and collect any errors
     $errors = processLoginForm($pdo);
 
     // After processing, determine if CAPTCHA should be shown
@@ -37,6 +42,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($attempt_record && $attempt_record['attempts'] >= 3 && $attempt_record['attempts'] < 7) {
         $show_captcha = true;
+    }
+
+    // If no errors after credential verification, proceed to 2FA
+    if (empty($errors)) {
+        if ($user_id) {
+            // Handle the 2FA process using the new function
+            $two_fa_errors = handle2FA($pdo, $user_id);
+            $errors = array_merge($errors, $two_fa_errors);
+            // Note: If handle2FA redirects, the following code won't execute
+        } else {
+            // Optional: Handle login attempts for non-existing users
+            // This can help prevent user enumeration attacks
+        }
     }
 }
 ?>

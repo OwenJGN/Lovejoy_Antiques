@@ -53,3 +53,4 @@ elseif (isset($_GET['token'])) { // Changed to elseif to ensure mutual exclusivi
 <?php
 require_once 'footer.php';
 ?>
+

@@ -5,7 +5,10 @@ require_once 'header.php'; // Include your header (HTML head, navigation, etc.)
 require_once '../includes/functions.php'; // Include functions.php for processing
 
 // Redirect if already logged in
-checkAccess('user');
+if (isLoggedIn()) {
+    header('Location: index.php');
+    exit();
+}
 
 
 $security_questions = fetchSecurityQuestions($pdo);

@@ -239,11 +239,10 @@ function handleFileUpload($file, &$errors) {
     return $photo_filename;
 }
 
-/**
- * Process the login form with login attempt limiting
- */
-function processLoginForm($pdo) {
+
+function processLoginForm(PDO $pdo): array {
     $errors = [];
+
     // CSRF token validation
     if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
         $errors[] = "Invalid CSRF token.";
@@ -269,13 +268,19 @@ function processLoginForm($pdo) {
     // Get client IP
     $client_ip = $_SERVER['REMOTE_ADDR'];
 
-    // Get user ID if email exists
+    // Initialize user_id and user_name
     $user_id = null;
+    $user_name = null;
+
+    // Fetch user details if email is provided
     if (!empty($email)) {
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, password, is_verified, name FROM users WHERE email = :email LIMIT 1");
         $stmt->execute([':email' => $email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        $user_id = $user ? $user['id'] : null;
+        if ($user) {
+            $user_id = $user['id'];
+            $user_name = $user['name'];
+        }
     }
 
     // Fetch login attempt record
@@ -319,104 +324,165 @@ function processLoginForm($pdo) {
             // Verify CAPTCHA with Google
             $recaptcha_secret = RECAPTCHA_SECRET_KEY;
             $recaptcha_response = $_POST['g-recaptcha-response'];
-            
+
             $verify_response = file_get_contents("https://www.google.com/recaptcha/api/siteverify?secret={$recaptcha_secret}&response={$recaptcha_response}");
             $response_data = json_decode($verify_response);
-            
+
             if (!$response_data->success) {
                 $errors[] = "CAPTCHA verification failed. Please try again.";
             }
         }
     }
 
-    // Proceed only if no errors so far
-    if (empty($errors)) {
-        $user = authenticateUser($pdo, $email, $password);
-        if ($user) {
-            if ($user['is_verified'] == 1) {
-                // Reset login attempts on successful login
-                if ($user_id) {
-                    $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE user_id = :user_id AND action_type = 'login'");
-                    $stmt->execute([':user_id' => $user_id]);
-                } else {
-                    $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE ip_address = :ip_address AND action_type = 'login'");
-                    $stmt->execute([':ip_address' => $client_ip]);
-                }
-
-                // Set session variables
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_name'] = $user['name'];
-                $_SESSION['is_admin'] = $user['is_admin'];
-
-                // Regenerate session ID upon successful login
-                session_regenerate_id(true);
-
-                // Redirect to index.php
-                header('Location: index.php');
-                exit();
-            } else {
-                $errors[] = "Your email is not verified. Please verify your email.";
-            }
-        } else {
-            $errors[] = "Invalid email or password.";
-
-            // Increment login attempts
-            if ($user_id) {
-                if ($attempt_record) {
-                    $attempts = $attempt_record['attempts'] + 1;
-                    $lock_until = null;
-
-                    if ($attempts >= 7) {
-                        // Lock the account for 12 hours
-                        $lock_time = new DateTime();
-                        $lock_time->modify('+12 hours');
-                        $lock_until = $lock_time->format('Y-m-d H:i:s');
-                        $errors[] = "Your account has been locked due to multiple failed login attempts. Please try again after 12 hours.";
-                    }
-
-                    // Update the attempts
-                    $stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW(), lock_until = :lock_until WHERE id = :id");
-                    $stmt->execute([
-                        ':attempts' => $attempts,
-                        ':lock_until' => $lock_until,
-                        ':id' => $attempt_record['id']
-                    ]);
-                } else {
-                    // Create a new attempt record
-                    $stmt = $pdo->prepare("INSERT INTO user_attempts (user_id, action_type, attempts, last_attempt) VALUES (:user_id, 'login', 1, NOW())");
-                    $stmt->execute([':user_id' => $user_id]);
-                }
-            } else {
-                // If user_id is not found, track by IP
-                if ($attempt_record) {
-                    $attempts = $attempt_record['attempts'] + 1;
-                    $lock_until = null;
-
-                    if ($attempts >= 7) {
-                        // Lock the IP for 12 hours
-                        $lock_time = new DateTime();
-                        $lock_time->modify('+12 hours');
-                        $lock_until = $lock_time->format('Y-m-d H:i:s');
-                        $errors[] = "Too many failed login attempts from your IP address. Please try again after 12 hours.";
-                    }
-
-                    // Update the attempts
-                    $stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW(), lock_until = :lock_until WHERE id = :id");
-                    $stmt->execute([
-                        ':attempts' => $attempts,
-                        ':lock_until' => $lock_until,
-                        ':id' => $attempt_record['id']
-                    ]);
-                } else {
-                    // Create a new attempt record
-                    $stmt = $pdo->prepare("INSERT INTO user_attempts (ip_address, action_type, attempts, last_attempt) VALUES (:ip_address, 'login', 1, NOW())");
-                    $stmt->execute([':ip_address' => $client_ip]);
-                }
-            }
-        }
+    // If there are any errors up to this point, return them
+    if (!empty($errors)) {
+        return $errors;
     }
 
+    // Proceed to credential verification
+    if ($user_id && isset($user['password'])) {
+        if (password_verify($password, $user['password'])) {
+            if ($user['is_verified'] != 1) {
+                $errors[] = "Your email is not verified. Please verify your email.";
+                // Optionally, you can increment login attempts here
+                return $errors;
+            } else {
+                // Credentials are correct, proceed to handle 2FA
+                $two_fa_errors = handle2FA($pdo, $user_id);
+                if (!empty($two_fa_errors)) {
+                    // If there are errors in handling 2FA, return them
+                    return $two_fa_errors;
+                }
+                // If handle2FA redirects, the following code won't execute
+            }
+        } else {
+            // Password is incorrect
+            $errors[] = "Invalid email or password.";
+            // Increment login attempts
+            incrementLoginAttempts($pdo, $user_id, $client_ip, 'login');
+            return $errors;
+        }
+    } else {
+        // User does not exist
+        $errors[] = "Invalid email or password.";
+        // Increment login attempts based on IP
+        incrementLoginAttempts($pdo, null, $client_ip, 'login');
+        return $errors;
+    }
+
+    // Return any accumulated errors
     return $errors;
+}
+function resetLoginAttempts(PDO $pdo, ?int $user_id = null){
+    try {
+        if ($user_id) {
+            // Delete user-based login attempts
+            $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE user_id = :user_id AND action_type = 'login'");
+            $stmt->execute([':user_id' => $user_id]);
+
+            error_log("Login attempts reset for user ID {$user_id}.");
+        }
+
+        else {
+            // Delete IP-based login attempts
+            $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE ip_address = :ip_address AND action_type = 'login'");
+            $stmt->execute([':ip_address' => $ip_address]);
+
+            error_log("Login attempts reset for IP address {$ip_address}.");
+        }
+    } catch (PDOException $e) {
+        error_log("Error resetting login attempts: " . $e->getMessage());
+    }
+}
+
+function incrementLoginAttempts(PDO $pdo, ?int $user_id, string $ip_address, string $action_type = 'login'): void {
+    try {
+        if ($user_id) {
+            // Fetch existing attempt record
+            $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE user_id = :user_id AND action_type = :action_type LIMIT 1");
+            $stmt->execute([
+                ':user_id' => $user_id,
+                ':action_type' => $action_type
+            ]);
+            $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($record) {
+                // Increment attempts
+                $new_attempts = $record['attempts'] + 1;
+                $update_stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW() WHERE id = :id");
+                $update_stmt->execute([
+                    ':attempts' => $new_attempts,
+                    ':id' => $record['id']
+                ]);
+
+                // Lock account if attempts exceed threshold (e.g., 5 attempts)
+                if ($new_attempts >= 5) {
+                    $lock_duration = '+30 minutes'; // Lock for 30 minutes
+                    $lock_until = date('Y-m-d H:i:s', strtotime($lock_duration));
+                    $lock_stmt = $pdo->prepare("UPDATE user_attempts SET lock_until = :lock_until WHERE id = :id");
+                    $lock_stmt->execute([
+                        ':lock_until' => $lock_until,
+                        ':id' => $record['id']
+                    ]);
+
+                    error_log("User ID {$user_id} has been locked out until {$lock_until} due to multiple failed login attempts.");
+                }
+            } else {
+                // Create new attempt record
+                $insert_stmt = $pdo->prepare("
+                    INSERT INTO user_attempts (user_id, action_type, attempts, last_attempt)
+                    VALUES (:user_id, :action_type, 1, NOW())
+                ");
+                $insert_stmt->execute([
+                    ':user_id' => $user_id,
+                    ':action_type' => $action_type
+                ]);
+            }
+        } else {
+            // Handle attempts based on IP address for non-existing users
+            $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE ip_address = :ip_address AND action_type = :action_type LIMIT 1");
+            $stmt->execute([
+                ':ip_address' => $ip_address,
+                ':action_type' => $action_type
+            ]);
+            $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($record) {
+                // Increment attempts
+                $new_attempts = $record['attempts'] + 1;
+                $update_stmt = $pdo->prepare("UPDATE user_attempts SET attempts = :attempts, last_attempt = NOW() WHERE id = :id");
+                $update_stmt->execute([
+                    ':attempts' => $new_attempts,
+                    ':id' => $record['id']
+                ]);
+
+                // Lock IP if attempts exceed threshold (e.g., 10 attempts)
+                if ($new_attempts >= 10) {
+                    $lock_duration = '+30 minutes'; // Lock for 30 minutes
+                    $lock_until = date('Y-m-d H:i:s', strtotime($lock_duration));
+                    $lock_stmt = $pdo->prepare("UPDATE user_attempts SET lock_until = :lock_until WHERE id = :id");
+                    $lock_stmt->execute([
+                        ':lock_until' => $lock_until,
+                        ':id' => $record['id']
+                    ]);
+
+                    error_log("IP Address {$ip_address} has been locked out until {$lock_until} due to multiple failed login attempts.");
+                }
+            } else {
+                // Create new attempt record
+                $insert_stmt = $pdo->prepare("
+                    INSERT INTO user_attempts (ip_address, action_type, attempts, last_attempt)
+                    VALUES (:ip_address, :action_type, 1, NOW())
+                ");
+                $insert_stmt->execute([
+                    ':ip_address' => $ip_address,
+                    ':action_type' => $action_type
+                ]);
+            }
+        }
+    } catch (PDOException $e) {
+        error_log("Database Error in incrementLoginAttempts: " . $e->getMessage());
+    }
 }
 
 /**
@@ -749,6 +815,234 @@ function sendPasswordResetEmail($email, $reset_token) {
         return false;
     }
     return true;
+}
+
+function send2FACodeEmail(string $email, string $code){
+    $mail = new PHPMailer(true);
+    
+    try {
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com'; // Gmail SMTP server
+        $mail->SMTPAuth   = true;
+        $mail->Username   = 'lovejoyantiques262924'; // Your Gmail address
+        $mail->Password   = 'trfk wbjx etst xgtl'; // Your Gmail App Password
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587; // Gmail SMTP port
+    
+        // Recipients
+        $mail->setFrom('no-reply@lovejoy.antiques.com', 'Lovejoy Antiques'); // Replace with your sender info
+        $mail->addAddress($email);
+    
+        // Content
+        $mail->isHTML(true);
+        $mail->Subject = 'Your 2FA Code for Lovejoy Antiques';
+        $mail->Body    = "
+            <html>
+            <head>
+                <title>2FA Code</title>
+            </head>
+            <body>
+                <p>Dear User,</p>
+                <p>Your Two-Factor Authentication (2FA) code is: <strong>{$code}</strong></p>
+                <p>This code will expire in 10 minutes.</p>
+                <p>If you did not attempt to log in, please secure your account immediately.</p>
+                <p>Best regards,<br>Lovejoy Antiques Team</p>
+            </body>
+            </html>
+        ";
+    
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log("2FA Email could not be sent to {$email}. Mailer Error: {$mail->ErrorInfo}");
+        return false;
+    }
+}
+
+function generateAndStore2FACode(PDO $pdo, int $user_id) {
+    // Generate a random 6-digit code using a cryptographically secure method
+    $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    
+    // Set expiration time (e.g., 10 minutes from now)
+    $expires_at = date('Y-m-d H:i:s', strtotime('+10 minutes'));
+    
+    try {
+        
+        // Optionally, delete any existing 2FA codes for the user to ensure single active code
+        $delete_stmt = $pdo->prepare("DELETE FROM user_2fa WHERE user_id = :user_id");
+        $delete_stmt->execute([':user_id' => $user_id]);
+        
+        // Insert the new 2FA code into the database
+        $insert_stmt = $pdo->prepare("
+            INSERT INTO user_2fa (user_id, code, expires_at)
+            VALUES (:user_id, :code, :expires_at)
+        ");
+        $insert_stmt->execute([
+            ':user_id'    => $user_id,
+            ':code'       => $code,
+            ':expires_at' => $expires_at
+        ]);
+        
+        return $code;
+    } catch (PDOException $e) {
+        // Log the error for debugging purposes
+        error_log("Error generating 2FA code for user ID {$user_id}: " . $e->getMessage());
+        return false;
+    }
+}
+
+function verify2FACode(PDO $pdo, int $user_id, string $code, int $max_attempts = 5){
+    try {
+        // Fetch the latest 2FA code for the user
+        $stmt = $pdo->prepare("
+            SELECT id, code, expires_at, attempts 
+            FROM user_2fa 
+            WHERE user_id = :user_id 
+            ORDER BY last_resend DESC 
+            LIMIT 1
+        ");
+        $stmt->execute([':user_id' => $user_id]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($record) {
+            if ($record['attempts'] >= $max_attempts) {
+                return 'locked';
+            }
+
+            // Check if the code matches and is not expired
+            if ($record['code'] === $code && new DateTime() <= new DateTime($record['expires_at'])) {
+                // Successful verification, delete the 2FA code
+                $delete_stmt = $pdo->prepare("DELETE FROM user_2fa WHERE id = :id");
+                $delete_stmt->execute([':id' => $record['id']]);
+                
+                return true;
+            } else {
+                // Increment the attempt count
+                $update_stmt = $pdo->prepare("UPDATE user_2fa SET attempts = attempts + 1 WHERE id = :id");
+                $update_stmt->execute([':id' => $record['id']]);
+                
+                return false;
+            }
+        }
+        
+        return false;
+    } catch (PDOException $e) {
+        error_log("Error verifying 2FA code for user ID {$user_id}: " . $e->getMessage());
+        return false;
+    }
+}
+
+function handle2FA(PDO $pdo, int $user_id): array {
+    $errors = [];
+
+    // Fetch user details
+    $stmt = $pdo->prepare("SELECT email, name FROM users WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $user_id]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($user) {
+        // Check resend limits before sending a new code
+        $resend_limit_result = check2FAResendLimit($pdo, $user_id);
+
+        if ($resend_limit_result['can_resend']) {
+            // Generate 2FA code
+            $code = generateAndStore2FACode($pdo, $user_id);
+
+            if ($code) {
+
+                // Send 2FA code via email
+                if (send2FACodeEmail($user['email'], $code)) {
+
+                    // Update resend_count and last_resend
+                    update2FAResendInfo($pdo, $user_id);
+                    // Store user ID in session for 2FA verification
+                    $_SESSION['2fa_user_id'] = $user_id;
+
+                    // Redirect to 2FA verification page
+                    header('Location: verify_2fa.php');
+                    exit();
+                } else {
+                    $errors[] = "Failed to send 2FA code. Please try again.";
+                    error_log("Failed to send 2FA email to {$user['email']} for user ID {$user_id}.");
+                }
+            } else {
+                $errors[] = "Failed to generate 2FA code. Please try again.";
+                error_log("Failed to generate 2FA code for user ID {$user_id}.");
+            }
+        } else {
+            $errors[] = "You have reached the maximum number of 2FA resend attempts. Please try again later.";
+        }
+    } else {
+        $errors[] = "User not found.";
+        error_log("User ID {$user_id} not found during 2FA handling.");
+    }
+
+    return $errors;
+}
+function check2FAResendLimit(PDO $pdo, int $user_id): array {
+    // Define limits
+    $max_resends = 3; // Maximum number of resends allowed
+    $resend_cooldown_minutes = 5; // Cooldown period in minutes
+
+    // Fetch the latest 2FA record for the user
+    $stmt = $pdo->prepare("SELECT attempts, last_resend FROM user_2fa WHERE user_id = :user_id ORDER BY id DESC LIMIT 1");
+    $stmt->execute([':user_id' => $user_id]);
+    $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($record) {
+        $current_time = new DateTime();
+        $last_resend = $record['last_resend'] ? new DateTime($record['last_resend']) : null;
+
+        // Check if the cooldown period has passed
+        if ($last_resend) {
+            $diff = $current_time->getTimestamp() - $last_resend->getTimestamp();
+            if ($diff < ($resend_cooldown_minutes * 60)) {
+                $remaining_seconds = ($resend_cooldown_minutes * 60) - $diff;
+                $remaining_time = gmdate("i:s", $remaining_seconds);
+                return [
+                    'can_resend' => false,
+                    'message' => "Please wait {$remaining_time} minutes before requesting another 2FA code."
+                ];
+            }
+        }
+
+        // Check if the resend_count has reached the maximum
+        if ($record['attempts'] >= $max_resends) {
+            return [
+                'can_resend' => false,
+                'message' => "You have reached the maximum number of 2FA resend attempts. Please try again later."
+            ];
+        }
+
+        return [
+            'can_resend' => true,
+            'message' => "You can resend the 2FA code."
+        ];
+    }
+
+    // If no record exists, allow resending
+    return [
+        'can_resend' => true,
+        'message' => "You can resend the 2FA code."
+    ];
+}
+
+function update2FAResendInfo(PDO $pdo, int $user_id): void {
+    try {
+        // Update the latest 2FA record
+        $stmt = $pdo->prepare("
+            UPDATE user_2fa 
+            SET attempts = attempts + 1, last_resend = NOW()
+            WHERE user_id = :user_id
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt->execute([':user_id' => $user_id]);
+
+        // Log the update action for debugging
+    } catch (PDOException $e) {
+        error_log("Error updating 2FA resend info for user ID {$user_id}: " . $e->getMessage());
+    }
 }
 
 /**
