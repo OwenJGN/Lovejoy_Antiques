@@ -50,10 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Handle the 2FA process using the new function
             $two_fa_errors = handle2FA($pdo, $user_id);
             $errors = array_merge($errors, $two_fa_errors);
-            // Note: If handle2FA redirects, the following code won't execute
-        } else {
-            // Optional: Handle login attempts for non-existing users
-            // This can help prevent user enumeration attacks
         }
     }
 }

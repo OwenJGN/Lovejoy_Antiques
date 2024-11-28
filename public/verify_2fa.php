@@ -23,12 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Retrieve and sanitize 2FA code input
     $entered_code = trim($_POST['2fa_code'] ?? '');
 
+
+    checkAndResetLock($pdo, $user_id);
     // Validate 2FA code
     if (empty($entered_code)) {
         $errors[] = "2FA code is required.";
-    } elseif (!ctype_digit($entered_code) || strlen($entered_code) !== 6) {
-        $errors[] = "Invalid 2FA code format.";
-    }
+    } 
 
     if (empty($errors)) {
         // Verify the 2FA code with attempt limiting
@@ -37,33 +37,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($verification_result === true) {
             // Successful verification
             // Fetch user details if not already available
-            if (isset($_SESSION['temp_user_name'])) {
-                $user_name = $_SESSION['temp_user_name'];
-                // Set session variables
-                $_SESSION['user_id'] = $user_id;
-                $_SESSION['user_name'] = $user_name;
+            $stmt = $pdo->prepare("SELECT name FROM users WHERE id = :id LIMIT 1");
+            $stmt->execute([':id' => $user_id]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            // Set session variables
+            $_SESSION['user_id'] = $user_id;
+            $_SESSION['user_name'] =  $user_name = escape($user['name']);
 
-                resetLoginAttempts($pdo, $user_id);
+            resetLoginAttempts($pdo, $user_id);
 
-                // Unset temporary session variables
-                unset($_SESSION['2fa_user_id']);
-                unset($_SESSION['temp_user_name']);
+            // Unset temporary session variables
+            unset($_SESSION['2fa_user_id']);
+            unset($_SESSION['temp_user_name']);
 
-                // Regenerate session ID to prevent session fixation
-                session_regenerate_id(true);
+            // Regenerate session ID to prevent session fixation
+            session_regenerate_id(true);
 
-                // Redirect to dashboard or homepage
-                header('Location: index.php');
-                exit();
-            } else {
-                $errors[] = "User name not found. Please contact support.";
-                error_log("User name missing in session for user ID {$user_id} after 2FA verification.");
-            }
-        } elseif ($verification_result === 'locked') {
-            $errors[] = "Too many failed attempts. Please try again after 30 minutes.";
-            // Optionally, implement account locking or notify the user
+            // Redirect to dashboard or homepage
+            header('Location: index.php');
+            exit();
+
         } else {
-            $errors[] = "Invalid or expired 2FA code.";
+            $errors[] = $verification_result;
         }
     }
 }
