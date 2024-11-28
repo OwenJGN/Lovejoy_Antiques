@@ -3,7 +3,7 @@
 
 require_once 'header.php';
 require_once '..\includes\functions.php';
-require_once '..\includes\config.php';
+require_once '..\config\config.php';
 
 // Redirect if no 2FA is pending
 if (!isset($_SESSION['2fa_user_id'])) {
@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
         $errors[] = "Invalid CSRF token.";
     }
-    checkAndResetLock($pdo, $user_id);
+    checkAndResetLock2FA($pdo, $user_id);
 
     if (empty($errors)) {
         // Check resend limits

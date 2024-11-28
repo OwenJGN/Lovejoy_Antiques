@@ -3,7 +3,7 @@
 
 require_once 'header.php';
 require_once '..\includes\functions.php';
-require_once '..\includes\config.php';
+require_once '..\config\config.php';
 
 // Redirect if no 2FA is pending
 if (!isset($_SESSION['2fa_user_id'])) {
@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $entered_code = trim($_POST['2fa_code'] ?? '');
 
 
-    checkAndResetLock($pdo, $user_id);
+    checkAndResetLock2FA($pdo, $user_id);
     // Validate 2FA code
     if (empty($entered_code)) {
         $errors[] = "2FA code is required.";

@@ -1,0 +1,260 @@
+<?php
+
+require_once 'functions.php';
+
+function generateAndStore2FACode(PDO $pdo, int $user_id) {
+    // Generate a random 6-digit code using a cryptographically secure method
+    $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    
+    // Set expiration time (e.g., 10 minutes from now)
+    $expires_at = date('Y-m-d H:i:s', strtotime('+10 minutes'));
+    
+    try {
+        $resend_count = $pdo->prepare("SELECT resend_count FROM user_2fa WHERE user_id = :user_id");
+        $resend_count->execute([':user_id' => $user_id]);
+        $resend_count_result = $resend_count->fetch(PDO::FETCH_ASSOC);
+
+        if ($resend_count_result) {
+            $resend_count = (int)$resend_count_result['resend_count'];
+        } else {
+            $resend_count = 0;
+        }
+        // Optionally, delete any existing 2FA codes for the user to ensure single active code
+        $delete_stmt = $pdo->prepare("DELETE FROM user_2fa WHERE user_id = :user_id");
+        $delete_stmt->execute([':user_id' => $user_id]);
+        
+        // Insert the new 2FA code into the database
+        $insert_stmt = $pdo->prepare("
+            INSERT INTO user_2fa (user_id, code, expires_at, resend_count)
+            VALUES (:user_id, :code, :expires_at, :resend_count)
+        ");
+        $insert_stmt->execute([
+            ':user_id'    => $user_id,
+            ':code'       => $code,
+            ':expires_at' => $expires_at,
+            ':resend_count' => $resend_count
+        ]);
+        
+        return $code;
+    } catch (PDOException $e) {
+        // Log the error for debugging purposes
+        error_log("Error generating 2FA code for user ID {$user_id}: " . $e->getMessage());
+        return false;
+    }
+}
+function verify2FACode(PDO $pdo, int $user_id, string $code, int $max_attempts = 5){
+    try {
+        // Fetch the latest 2FA code for the user
+        $stmt = $pdo->prepare("
+            SELECT id, code, expires_at, attempts
+            FROM user_2fa 
+            WHERE user_id = :user_id 
+            ORDER BY last_resend DESC 
+            LIMIT 1
+        ");
+        $stmt->execute([':user_id' => $user_id]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $current_time = new DateTime();
+        if ($record) {
+
+            $locked_minutes = checkAndResetLock2FA($pdo, $user_id);
+
+            if($locked_minutes != 0){
+                return "Too many failed attempts. Please try again after {$locked_minutes} minutes.";
+            }
+            else if ($record['attempts'] >= $max_attempts) {
+
+                $stmt = $pdo->prepare("
+                    UPDATE user_2fa
+                    SET lock_until = DATE_ADD(NOW(), INTERVAL 30 MINUTE)
+                    WHERE user_id = :user_id
+                ");
+        
+                // Execute the statement with the actual user_id value
+                $stmt->execute([':user_id' => $user_id]);
+
+                return "Too many failed attempts. Please try again after 30 minutes.";
+            }
+
+            // Check if the code matches and is not expired
+            if ($record['code'] === $code && new DateTime() <= new DateTime($record['expires_at'])) {
+                // Successful verification, delete the 2FA code
+                $delete_stmt = $pdo->prepare("DELETE FROM user_2fa WHERE id = :id");
+                $delete_stmt->execute([':id' => $record['id']]);
+                
+                return true;
+            } else {
+                // Increment the attempt count
+                $update_stmt = $pdo->prepare("UPDATE user_2fa SET attempts = attempts + 1 WHERE id = :id");
+                $update_stmt->execute([':id' => $record['id']]);
+                
+                return "Invalid or expired 2FA code.";
+            }
+        }
+        
+        return "Invalid or expired 2FA code.";
+    } catch (PDOException $e) {
+        return "Error verifying 2FA code for user ID {$user_id}: " . $e->getMessage();
+    }
+}
+
+
+function handle2FA(PDO $pdo, int $user_id): array {
+    $errors = [];
+
+    // Fetch user details
+    $stmt = $pdo->prepare("SELECT email, name FROM users WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $user_id]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($user) {
+        // Check resend limits before sending a new code
+        $resend_limit_result = check2FAResendLimit($pdo, $user_id);
+
+        if ($resend_limit_result['can_resend']) {
+            // Generate 2FA code
+            $code = generateAndStore2FACode($pdo, $user_id);
+
+            if ($code) {
+
+                // Send 2FA code via email
+                if (send2FACodeEmail($user['email'], $code)) {
+
+                    // Update resend_count and last_resend
+                    update2FAResendInfo($pdo, $user_id);
+                    // Store user ID in session for 2FA verification
+                    $_SESSION['2fa_user_id'] = $user_id;
+                    $_SESSION['temp_user_name'] = $user['name'];
+
+                    // Redirect to 2FA verification page
+                    header('Location: verify_2fa.php');
+                    exit();
+                } else {
+                    $errors[] = "Failed to send 2FA code. Please try again.";
+                    error_log("Failed to send 2FA email to {$user['email']} for user ID {$user_id}.");
+                }
+            } else {
+                $errors[] = "Failed to generate 2FA code. Please try again.";
+                error_log("Failed to generate 2FA code for user ID {$user_id}.");
+            }
+        } else {
+            $errors[] = "You have reached the maximum number of 2FA resend attempts. Please try again in 30 minutes.";
+        }
+    } else {
+        $errors[] = "User not found.";
+        error_log("User ID {$user_id} not found during 2FA handling.");
+    }
+
+    return $errors;
+}
+function check2FAResendLimit(PDO $pdo, int $user_id): array {
+    // Define limits
+    $max_resends = 3; // Maximum number of resends allowed
+    $resend_cooldown_minutes = 5; // Cooldown period in minutes
+
+    // Fetch the latest 2FA record for the user
+    $stmt = $pdo->prepare("SELECT resend_count, last_resend FROM user_2fa WHERE user_id = :user_id ORDER BY id DESC LIMIT 1");
+    $stmt->execute([':user_id' => $user_id]);
+    $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($record) {
+        $current_time = new DateTime();
+        $last_resend = $record['last_resend'] ? new DateTime($record['last_resend']) : null;
+
+        // Check if the cooldown period has passed
+        if ($last_resend) {
+            $diff = $current_time->getTimestamp() - $last_resend->getTimestamp();
+            if ($diff < ($resend_cooldown_minutes * 60)) {
+                $remaining_seconds = ($resend_cooldown_minutes * 60) - $diff;
+                $remaining_time = gmdate("i:s", $remaining_seconds);
+                return [
+                    'can_resend' => false,
+                    'message' => "Please wait {$remaining_time} minutes before requesting another 2FA code."
+                ];
+            }
+        }
+
+        // Check if the resend_count has reached the maximum
+        if ($record['resend_count'] >= $max_resends) {
+            return [
+                'can_resend' => false,
+                'message' => "You have reached the maximum number of 2FA resend attempts. Please try again in 30 minutes."
+            ];
+        }
+
+        return [
+            'can_resend' => true,
+            'message' => "You can resend the 2FA code."
+        ];
+    }
+
+    // If no record exists, allow resending
+    return [
+        'can_resend' => true,
+        'message' => "You can resend the 2FA code."
+    ];
+}
+function update2FAResendInfo(PDO $pdo, int $user_id): void {
+    try {
+        // Update the latest 2FA record
+        $stmt = $pdo->prepare("
+            UPDATE user_2fa 
+            SET resend_count = resend_count + 1, last_resend = NOW()
+            WHERE user_id = :user_id
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt->execute([':user_id' => $user_id]);
+
+        // Log the update action for debugging
+    } catch (PDOException $e) {
+        error_log("Error updating 2FA resend info for user ID {$user_id}: " . $e->getMessage());
+    }
+}
+function checkAndResetLock2FA(PDO $pdo, int $user_id){
+
+    $stmt = $pdo->prepare("SELECT lock_until, resend_count, attempts FROM user_2fa WHERE user_id = :user_id LIMIT 1");
+    $stmt->execute([':user_id' => $user_id]);
+    $record = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // If a record exists and lock_until is set
+    if ($record && !empty($record['lock_until'])) {
+        $current_time = new DateTime('now', new DateTimeZone('UTC'));
+        $lock_until_time = new DateTime($record['lock_until'], new DateTimeZone('UTC'));
+        
+        // Compare current time with lock_until
+        if ($current_time > $lock_until_time) {
+            // Lock period has expired, reset resend_count and lock_until
+            $reset_stmt = $pdo->prepare("
+                UPDATE user_2fa
+                SET resend_count = 0,
+                    lock_until = NULL,
+                    attempts = 0
+                WHERE user_id = :user_id
+            ");
+            $reset_stmt->execute([':user_id' => $user_id]);
+            
+            return 0;
+
+        } else {
+            // Lock is still active
+            $remaining_interval = $current_time->diff($lock_until_time);
+            
+            // Calculate total remaining minutes
+            $remaining_minutes = ($remaining_interval->days * 24 * 60) +
+                                ($remaining_interval->h * 60) +
+                                $remaining_interval->i;
+            
+            // Optionally, include seconds for more precision
+            if ($remaining_interval->s > 0) {
+                $remaining_minutes += 1; // Round up to the next minute if there are remaining seconds
+            }
+            
+            return $remaining_minutes;
+        }
+    } 
+    return 0;
+    
+}
+
+?>
