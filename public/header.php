@@ -5,21 +5,6 @@ require_once 'init.php';
 $isLoggedIn = isLoggedIn();
 $userName = $isLoggedIn ? escape($_SESSION['user_name']) : '';
 $isAdmin = isAdmin();
-//CSP
-$CSP = "default-src 'self'; ";
-$CSP .= "script-src 'self' https://cdn.jsdelivr.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; ";
-$CSP .= "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; ";
-$CSP .= "img-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ data:; ";
-$CSP .= "frame-src https://www.google.com/recaptcha/; ";
-$CSP .= "font-src 'self'; ";
-$CSP .= "connect-src 'self'; ";
-$CSP .= "object-src 'none'; ";
-$CSP .= "base-uri 'self'; ";
-$CSP .= "form-action 'self'; ";
-$CSP .= "frame-ancestors 'self'; ";
-
-// Set the CSP header
-header("Content-Security-Policy: $CSP");
 
 // Generate CSRF token for forms if needed
 $csrf_token = generateCsrfToken();

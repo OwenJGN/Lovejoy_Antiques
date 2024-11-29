@@ -56,33 +56,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="mb-3">
                     <h4>Security Question 1:</h4>                
-                    <p><?php echo htmlspecialchars($security_questions[0]['question']); ?></p>
+                    <p><?php echo escape($security_questions[0]['question']); ?></p>
                     <!-- Hidden input to store the question ID -->
-                    <input type="hidden" name="security_question_1" value="<?php echo htmlspecialchars($security_questions[0]['id']); ?>">
+                    <input type="hidden" name="security_question_1" value="<?php echo escape($security_questions[0]['id']); ?>">
                     <!-- Input for the user's answer -->
                     <input type="text" name="security_answer_1" class="form-control mt-2" placeholder="Your Answer" required
-                        value="<?php echo isset($_POST['security_answer_1']) ? htmlspecialchars($_POST['security_answer_1']) : ''; ?>">
+                        value="<?php echo isset($_POST['security_answer_1']) ? escape($_POST['security_answer_1']) : ''; ?>">
                 </div>
 
                 <!-- Security Question 2 -->
                 <div class="mb-3">
                     <h4>Security Question 2:</h4>                
-                    <p><?php echo htmlspecialchars($security_questions[1]['question']); ?></p>
+                    <p><?php echo escape($security_questions[1]['question']); ?></p>
                     <!-- Hidden input to store the question ID -->
-                    <input type="hidden" name="security_question_2" value="<?php echo htmlspecialchars($security_questions[1]['id']); ?>">
+                    <input type="hidden" name="security_question_2" value="<?php echo escape($security_questions[1]['id']); ?>">
                     <!-- Input for the user's answer -->
                     <input type="text" name="security_answer_2" class="form-control mt-2" placeholder="Your Answer" required
-                        value="<?php echo isset($_POST['security_answer_2']) ? htmlspecialchars($_POST['security_answer_2']) : ''; ?>">
+                        value="<?php echo isset($_POST['security_answer_2']) ? escape($_POST['security_answer_2']) : ''; ?>">
                 </div>
 
                 <div class="mb-3">
                     <h4>Security Question 3:</h4>                
-                    <p><?php echo htmlspecialchars($security_questions[2]['question']); ?></p>
+                    <p><?php echo escape($security_questions[2]['question']); ?></p>
                     <!-- Hidden input to store the question ID -->
-                    <input type="hidden" name="security_question_3" value="<?php echo htmlspecialchars($security_questions[2]['id']); ?>">
+                    <input type="hidden" name="security_question_3" value="<?php echo escape($security_questions[2]['id']); ?>">
                     <!-- Input for the user's answer -->
                     <input type="text" name="security_answer_3" class="form-control mt-2" placeholder="Your Answer" required
-                        value="<?php echo isset($_POST['security_answer_3']) ? htmlspecialchars($_POST['security_answer_3']) : ''; ?>">
+                        value="<?php echo isset($_POST['security_answer_3']) ? escape($_POST['security_answer_3']) : ''; ?>">
                 </div>
 
 

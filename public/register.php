@@ -101,14 +101,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <select name="security_question_1" id="security_question_1" class="form-control" required>
                     <option value="">-- Select a question --</option>
                     <?php foreach ($security_questions as $question): ?>
-                        <option value="<?php echo htmlspecialchars($question['id']); ?>"
+                        <option value="<?php echo escape($question['id']); ?>"
                             <?php echo (isset($_POST['security_question_1']) && $_POST['security_question_1'] == $question['id']) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($question['question']); ?>
+                            <?php echo escape($question['question']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
                 <input type="text" name="security_answer_1" class="form-control mt-2" placeholder="Your Answer" required
-                       value="<?php echo isset($_POST['security_answer_1']) ? htmlspecialchars($_POST['security_answer_1']) : ''; ?>">
+                       value="<?php echo isset($_POST['security_answer_1']) ? escape($_POST['security_answer_1']) : ''; ?>">
             </div>
 
             <!-- Security Question 2 -->
@@ -117,14 +117,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <select name="security_question_2" id="security_question_2" class="form-control" required>
                     <option value="">-- Select a question --</option>
                     <?php foreach ($security_questions as $question): ?>
-                        <option value="<?php echo htmlspecialchars($question['id']); ?>"
+                        <option value="<?php echo escape($question['id']); ?>"
                             <?php echo (isset($_POST['security_question_2']) && $_POST['security_question_2'] == $question['id']) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($question['question']); ?>
+                            <?php echo escape($question['question']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
                 <input type="text" name="security_answer_2" class="form-control mt-2" placeholder="Your Answer" required
-                       value="<?php echo isset($_POST['security_answer_2']) ? htmlspecialchars($_POST['security_answer_2']) : ''; ?>">
+                       value="<?php echo isset($_POST['security_answer_2']) ? escape($_POST['security_answer_2']) : ''; ?>">
             </div>
 
             <!-- Security Question 3 -->
@@ -133,14 +133,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <select name="security_question_3" id="security_question_3" class="form-control" required>
                     <option value="">-- Select a question --</option>
                     <?php foreach ($security_questions as $question): ?>
-                        <option value="<?php echo htmlspecialchars($question['id']); ?>"
+                        <option value="<?php echo escape($question['id']); ?>"
                             <?php echo (isset($_POST['security_question_3']) && $_POST['security_question_3'] == $question['id']) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($question['question']); ?>
+                            <?php echo escape($question['question']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
                 <input type="text" name="security_answer_3" class="form-control mt-2" placeholder="Your Answer" required
-                       value="<?php echo isset($_POST['security_answer_3']) ? htmlspecialchars($_POST['security_answer_3']) : ''; ?>">
+                       value="<?php echo isset($_POST['security_answer_3']) ? escape($_POST['security_answer_3']) : ''; ?>">
             </div>
 
 

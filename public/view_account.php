@@ -16,28 +16,26 @@ $user_name = '';
 $user_email = '';
 
 // Fetch user data from the database
-try {
-    $stmt = $pdo->prepare("SELECT name, email FROM users WHERE id = :id LIMIT 1");
-    $stmt->execute([':id' => $user_id]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($user) {
-        $user_name = escape($user['name']);
-        $user_email = escape($user['email']);
-    } else {
-        // If user not found, redirect to logout
-        header('Location: logout.php');
-        exit();
-    }
-} catch (PDOException $e) {
-    error_log("Database Error: " . $e->getMessage());
-    $_SESSION['error_message'] = "An error occurred while fetching your account details. Please try again later.";
-    header('Location: account.php');
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
     exit();
 }
 
-// Generate CSRF token
-$csrf_token = generateCsrfToken();
+// Fetch user details
+$user_id = $_SESSION['user_id'];
+$result = fetchUserDetails($pdo, $user_id);
+
+if ($result['success']) {
+    // Extract user details
+    $user_name = $result['user']['name'];
+    $user_email = $result['user']['email'];
+} else {
+    // Handle errors (e.g., user not found or database error)
+    $_SESSION['error_message'] = $result['error'];
+    header('Location: ' . ($result['error'] === "User not found." ? 'logout.php' : 'account.php'));
+    exit();
+}
+
 ?>
 
 <div class="main-content">
@@ -45,7 +43,7 @@ $csrf_token = generateCsrfToken();
         <h2 class="mb-4">Account Management</h2>
         <hr>    
 
-        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+        <input type="hidden" name="csrf_token" value="<?php echo escape(generateCsrfToken()); ?>">
         <!-- User Information -->
         <div class="mb-4">
             <h3>Your Information</h3>

@@ -1,144 +1,5 @@
 <?php
 require_once 'functions.php';
-/**
- * Redirect to a specified URL
- */
-function processLoginForm(PDO $pdo): array {
-    $errors = [];
-
-    // CSRF token validation
-    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
-        $errors[] = "Invalid CSRF token.";
-        return $errors;
-    }
-
-    // Retrieve and sanitize inputs
-    $email = trim($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
-
-    // Validate email
-    if (empty($email)) {
-        $errors[] = "Email is required.";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errors[] = "Invalid email format.";
-    }
-
-    // Validate password
-    if (empty($password)) {
-        $errors[] = "Password is required.";
-    }
-
-    // Get client IP
-    $client_ip = $_SERVER['REMOTE_ADDR'];
-
-    // Initialize user_id and user_name
-    $user_id = null;
-    $user_name = null;
-
-    // Fetch user details if email is provided
-    if (!empty($email)) {
-        $stmt = $pdo->prepare("SELECT id, password, is_verified, is_admin, name FROM users WHERE email = :email LIMIT 1");
-        $stmt->execute([':email' => $email]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($user) {
-            $user_id = $user['id'];
-            $user_name = $user['name'];
-        }
-    }
-
-    // Fetch login attempt record
-    if ($user_id) {
-        $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE user_id = :user_id AND action_type = 'login' LIMIT 1");
-        $stmt->execute([':user_id' => $user_id]);
-    } else {
-        $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE ip_address = :ip_address AND action_type = 'login' LIMIT 1");
-        $stmt->execute([':ip_address' => $client_ip]);
-    }
-    $attempt_record = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    // Check if account or IP is locked
-    if ($attempt_record && $attempt_record['lock_until']) {
-        $current_time = new DateTime();
-        $lock_until = new DateTime($attempt_record['lock_until']);
-
-        if ($current_time < $lock_until) {
-            $remaining = $lock_until->diff($current_time);
-            $hours = $remaining->h;
-            $minutes = $remaining->i;
-            $seconds = $remaining->s;
-            $errors[] = "Your account is locked due to multiple failed login attempts. Please try again after {$hours}h {$minutes}m {$seconds}s.";
-            return $errors;
-        }
-    }
-
-    // Determine if CAPTCHA should be shown
-    $show_captcha = false;
-    if ($attempt_record) {
-        if ($attempt_record['attempts'] >= 3 && $attempt_record['attempts'] < 7) {
-            $show_captcha = true;
-        }
-    }
-
-    // If CAPTCHA is required, verify it
-    if ($show_captcha) {
-        if (empty($_POST['g-recaptcha-response'])) {
-            $errors[] = "Please complete the CAPTCHA.";
-        } else {
-            // Verify CAPTCHA with Google
-            $recaptcha_secret = RECAPTCHA_SECRET_KEY;
-            $recaptcha_response = $_POST['g-recaptcha-response'];
-
-            $verify_response = file_get_contents("https://www.google.com/recaptcha/api/siteverify?secret={$recaptcha_secret}&response={$recaptcha_response}");
-            $response_data = json_decode($verify_response);
-
-            if (!$response_data->success) {
-                $errors[] = "CAPTCHA verification failed. Please try again.";
-            }
-        }
-    }
-
-    // If there are any errors up to this point, return them
-    if (!empty($errors)) {
-        return $errors;
-    }
-
-    // Proceed to credential verification
-    if ($user_id && isset($user['password'])) {
-        if (password_verify($password, $user['password'])) {
-            if ($user['is_verified'] != 1) {
-                $errors[] = "Your email is not verified. Please verify your email.";
-                return $errors;
-            } else {
-                // Credentials are correct, proceed to handle 2FA
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_name'] = $user['name'];
-                $_SESSION['is_admin'] = $user['is_admin'];
-
-                $two_fa_errors = handle2FA($pdo, $user_id);
-                if (!empty($two_fa_errors)) {
-                    // If there are errors in handling 2FA, return them
-                    return $two_fa_errors;
-                }
-                // If handle2FA redirects, the following code won't execute
-            }
-        } else {
-            // Password is incorrect
-            $errors[] = "Invalid email or password.";
-            // Increment login attempts
-            incrementLoginAttempts($pdo, $user_id, $client_ip, 'login');
-            return $errors;
-        }
-    } else {
-        // User does not exist
-        $errors[] = "Invalid email or password.";
-        // Increment login attempts based on IP
-        incrementLoginAttempts($pdo, null, $client_ip, 'login');
-        return $errors;
-    }
-
-    // Return any accumulated errors
-    return $errors;
-}
 
 /**
  * Resend verification email with rate limiting
@@ -294,7 +155,6 @@ function processResendVerificationOrResetForm($pdo, $email, $action) {
     ];
 }
 
-
 /**
  * Process email verification using token
  */
@@ -357,10 +217,10 @@ function processEmailVerification($pdo, $token) {
 
     return ['success' => $success, 'errors' => $errors];
 }
+
 /**
  * Process the registration form
  */
-
  function processRegistrationForm($pdo) {
     $errors = [];
     $success = false;
@@ -496,4 +356,241 @@ function processEmailVerification($pdo, $token) {
     return ['errors' => $errors, 'success' => $success];
 }
 
+/**
+ * Check security questions and validate answers
+ */
+function checkSecurityQuestions($pdo, $user_id) {
+    $errors = [];
+    $success = false;
+
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['errors' => $errors, 'success' => $success];
+    }
+
+    // Fetch stored security answers
+    $stored_answers = fetchUserSecurityAnswers($pdo, $user_id);
+    
+    // Retrieve and sanitize user-provided answers
+    $provided_answers = [
+        strtolower(trim($_POST['security_answer_1'] ?? '')),
+        strtolower(trim($_POST['security_answer_2'] ?? '')),
+        strtolower(trim($_POST['security_answer_3'] ?? ''))
+    ];
+
+    // Validate that all answers are provided
+    foreach ($provided_answers as $index => $answer) {
+        if (empty($answer)) {
+            $errors[] = "Answer to Security Question " . ($index + 1) . " is required.";
+        }
+    }
+
+    if(empty($errors)){
+        // Verify each provided answer against the stored hashed answer
+        foreach ($stored_answers as $index => $stored) {
+            if (!password_verify($provided_answers[$index], $stored['hashed_answer'])) {
+                $errors[] = "Incorrect answer to the security question/s.";
+                return ['errors' => $errors, 'success' => $success];
+            }
+        }
+    }
+    
+    // All answers match
+    if(empty($errors)){
+        $_SESSION['can_reset_password'] = true;
+        $success = true;
+    }
+    return ['errors' => $errors, 'success' => $success];
+}
+
+/**
+ * Generate and store a token (e.g., for email verification)
+ */
+function generateAndStoreToken($pdo, $user_id, $type, $token_length = 16, $validity_period = '+24 hours') {
+    try {
+        // Start a transaction to ensure atomicity
+        $pdo->beginTransaction();
+
+        // Delete existing tokens of the same type for the user
+        $delete_stmt = $pdo->prepare("
+            DELETE FROM tokens 
+            WHERE user_id = :user_id AND type = :type
+        ");
+        $delete_stmt->execute([
+            ':user_id' => $user_id,
+            ':type'    => $type
+        ]);
+
+        // Generate a secure random token
+        $token = bin2hex(random_bytes($token_length));
+
+        // Calculate expiration time
+        $expires_at = date('Y-m-d H:i:s', strtotime($validity_period));
+
+        // Insert the new token into the tokens table
+        $insert_stmt = $pdo->prepare("
+            INSERT INTO tokens (user_id, token, type, expires_at)
+            VALUES (:user_id, :token, :type, :expires_at)
+        ");
+        $insert_stmt->execute([
+            ':user_id'    => $user_id,
+            ':token'      => $token,
+            ':type'       => $type,
+            ':expires_at' => $expires_at
+        ]);
+
+        // Commit the transaction
+        $pdo->commit();
+
+        return $token;
+    } catch (Exception $e) {
+        // Roll back the transaction in case of error
+        $pdo->rollBack();
+        error_log("Error in generateAndStoreToken: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Process the new password reset
+ */
+function processNewPassword($pdo, $is_security_questions = false, $user_id = null){
+    $errors = [];
+    $success = '';
+
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['success' => $success, 'errors' => $errors];
+    }
+
+    // Retrieve and sanitize inputs
+    $source = $_POST['source'] ?? '';
+    $token = $_POST['token'] ?? '';
+    $new_password = $_POST['new_password'] ?? '';
+    $confirm_new_password = $_POST['confirm_new_password'] ?? '';
+
+    // Determine reset method
+    if ($is_security_questions) {
+        if (!isset($user_id)) {
+            $errors[] = "User identification error.";
+            return ['success' => $success, 'errors' => $errors];
+        }
+    } elseif (!empty($token)) {
+        // Token-based reset
+    } else {
+        $errors[] = "Invalid password reset access method.";
+        return ['success' => $success, 'errors' => $errors];
+    }
+
+    // Validate the new password
+    $password_errors = validatePassword($new_password);
+    $errors = array_merge($errors, $password_errors);
+
+    // Confirm new password
+    if (empty($confirm_new_password)) {
+        $errors[] = "Please confirm your new password.";
+    } elseif ($new_password !== $confirm_new_password) {
+        $errors[] = "New passwords do not match.";
+    }
+
+    // Proceed only if there are no validation errors
+    if (empty($errors)) {
+        try {
+            // Begin a transaction
+            $pdo->beginTransaction();
+
+            if ($is_security_questions) {
+                // Update password for authenticated user
+                updateUserPassword($pdo, $user_id, $new_password);
+            } else {
+                // Token-based password reset
+                $token_data = getTokenData($pdo, $token, 'password_reset');
+
+                if ($token_data) {
+                    if (isTokenExpired($token_data['expires_at'])) {
+                        $errors[] = "This password reset link has expired.";
+                        $pdo->rollBack();
+                        return ['success' => $success, 'errors' => $errors];
+                    }
+
+                    $user_id = $token_data['user_id'];
+                    updateUserPassword($pdo, $user_id, $new_password);
+
+                    // Delete the used token to prevent reuse
+                    deleteToken($pdo, $token, 'password_reset');
+                } else {
+                    $errors[] = "Invalid password reset token.";
+                    $pdo->rollBack();
+                    return ['success' => $success, 'errors' => $errors];
+                }
+            }
+
+            // Commit the transaction
+            $pdo->commit();
+
+            $success = "Your password has been successfully reset. You can now <a href='login.php'>log in</a> with your new password.";
+        } catch (Exception $e) {
+            // Rollback the transaction on error
+            $pdo->rollBack();
+            error_log("Password Reset Error: " . $e->getMessage());
+            $errors[] = "An error occurred while resetting your password. Please try again later.";
+        }
+    }
+
+    return [
+        'success' => $success,
+        'errors'  => $errors
+    ];
+}
+
+/**
+ * Update user's password in the database
+ */
+function updateUserPassword($pdo, $user_id, $new_password) {
+    $hashed_password = hashData($new_password);
+    $update_stmt = $pdo->prepare("
+        UPDATE users 
+        SET password = :password 
+        WHERE id = :user_id
+    ");
+    $update_stmt->execute([
+        ':password' => $hashed_password,
+        ':user_id' => $user_id
+    ]);
+}
+
+/**
+ * Retrieve token data from the database
+ */
+function getTokenData($pdo, $token, $type) {
+    $stmt = $pdo->prepare("
+        SELECT user_id, expires_at 
+        FROM tokens 
+        WHERE token = :token AND type = :type
+    ");
+    $stmt->execute([':token' => $token, ':type' => $type]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Check if a token has expired
+ */
+function isTokenExpired($expires_at) {
+    $current_time = new DateTime();
+    $expiration_time = new DateTime($expires_at);
+    return $current_time > $expiration_time;
+}
+
+/**
+ * Delete a token from the database
+ */
+function deleteToken($pdo, $token, $type) {
+    $delete_stmt = $pdo->prepare("
+        DELETE FROM tokens 
+        WHERE token = :token AND type = :type
+    ");
+    $delete_stmt->execute([':token' => $token, ':type' => $type]);
+}
 ?>

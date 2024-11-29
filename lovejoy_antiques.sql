@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 5.2.1
+-- version 5.2.0
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 28, 2024 at 03:28 PM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+-- Generation Time: Nov 29, 2024 at 01:39 AM
+-- Server version: 10.4.25-MariaDB
+-- PHP Version: 8.1.10
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -34,7 +34,14 @@ CREATE TABLE `evaluation_requests` (
   `preferred_contact` enum('phone','email') NOT NULL,
   `photo` varchar(255) DEFAULT NULL,
   `request_date` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `evaluation_requests`
+--
+
+INSERT INTO `evaluation_requests` (`id`, `user_id`, `details`, `preferred_contact`, `photo`, `request_date`) VALUES
+(11, 2, 'Test', 'phone', 'photo_6748e250b65040.86305455.png', '2024-11-28 21:36:16');
 
 -- --------------------------------------------------------
 
@@ -45,7 +52,7 @@ CREATE TABLE `evaluation_requests` (
 CREATE TABLE `security_questions` (
   `id` int(11) NOT NULL,
   `question` text NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `security_questions`
@@ -76,7 +83,7 @@ CREATE TABLE `tokens` (
   `type` enum('verification','password_reset') NOT NULL,
   `expires_at` datetime NOT NULL,
   `created_at` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `tokens`
@@ -86,7 +93,7 @@ INSERT INTO `tokens` (`id`, `user_id`, `token`, `type`, `expires_at`, `created_a
 (71, 3, 'dd95a5e5c481e57fc04330eebfda5fb9', '', '2024-11-14 23:38:52', '2024-11-13 22:38:52'),
 (86, 9, '71782cd82e265bcca8611f4ed3997b4b', 'verification', '2024-11-23 02:35:13', '2024-11-22 01:35:13'),
 (114, 11, '927ae2a16e557708942c42db19f00c19', 'verification', '2024-11-29 15:24:21', '2024-11-28 14:24:21'),
-(115, 10, '60b9b0f0556293e3ee36f3852dd0e9890e106530a2077e083107cbbeba82a37e', 'password_reset', '2024-11-28 16:25:09', '2024-11-28 14:25:09');
+(118, 10, '7845f18933252254af0339af6e9e992df1f996ba6c293894b44bbf86700a1eb4', 'password_reset', '2024-11-28 20:37:10', '2024-11-28 18:37:10');
 
 -- --------------------------------------------------------
 
@@ -103,7 +110,7 @@ CREATE TABLE `users` (
   `is_admin` tinyint(1) DEFAULT 0,
   `registered_at` datetime DEFAULT current_timestamp(),
   `is_verified` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `users`
@@ -125,18 +132,21 @@ INSERT INTO `users` (`id`, `name`, `email`, `password`, `phone`, `is_admin`, `re
 CREATE TABLE `user_2fa` (
   `id` int(10) UNSIGNED NOT NULL,
   `user_id` int(10) UNSIGNED NOT NULL,
-  `code` varchar(6) NOT NULL,
+  `code` varchar(6) COLLATE utf8mb4_unicode_ci NOT NULL,
   `expires_at` datetime NOT NULL,
   `attempts` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `last_resend` datetime NOT NULL
+  `last_resend` datetime NOT NULL,
+  `resend_count` int(10) NOT NULL DEFAULT 0,
+  `lock_until` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `user_2fa`
 --
 
-INSERT INTO `user_2fa` (`id`, `user_id`, `code`, `expires_at`, `attempts`, `last_resend`) VALUES
-(53, 10, '158005', '2024-11-28 15:23:19', 0, '0000-00-00 00:00:00');
+INSERT INTO `user_2fa` (`id`, `user_id`, `code`, `expires_at`, `attempts`, `last_resend`, `resend_count`, `lock_until`) VALUES
+(107, 10, '976997', '2024-11-28 20:14:31', 0, '2024-11-28 19:04:34', 4, NULL),
+(111, 2, '159382', '2024-11-29 00:24:09', 0, '0000-00-00 00:00:00', 0, NULL);
 
 -- --------------------------------------------------------
 
@@ -152,7 +162,7 @@ CREATE TABLE `user_attempts` (
   `attempts` int(11) NOT NULL DEFAULT 0,
   `last_attempt` datetime DEFAULT NULL,
   `lock_until` datetime DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `user_attempts`
@@ -160,9 +170,9 @@ CREATE TABLE `user_attempts` (
 
 INSERT INTO `user_attempts` (`id`, `user_id`, `ip_address`, `action_type`, `attempts`, `last_attempt`, `lock_until`) VALUES
 (33, 9, NULL, 'login', 2, '2024-11-22 01:37:49', NULL),
-(57, 10, NULL, 'login', 1, '2024-11-26 20:54:28', NULL),
-(58, 10, NULL, 'password_reset', 3, '2024-11-28 15:25:09', NULL),
-(60, 11, NULL, 'verification', 3, '2024-11-28 15:24:21', '2024-11-29 15:24:47');
+(58, 10, NULL, 'password_reset', 3, '2024-11-28 19:37:10', '2024-11-29 20:07:40'),
+(60, 11, NULL, 'verification', 3, '2024-11-28 15:24:21', '2024-11-29 15:24:47'),
+(78, 10, NULL, 'login', 4, '2024-11-28 20:12:28', NULL);
 
 -- --------------------------------------------------------
 
@@ -174,7 +184,7 @@ CREATE TABLE `user_security_questions` (
   `user_id` int(11) NOT NULL,
   `security_question_id` int(11) NOT NULL,
   `security_answer` varchar(255) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `user_security_questions`
@@ -254,7 +264,7 @@ ALTER TABLE `user_security_questions`
 -- AUTO_INCREMENT for table `evaluation_requests`
 --
 ALTER TABLE `evaluation_requests`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `security_questions`
@@ -266,7 +276,7 @@ ALTER TABLE `security_questions`
 -- AUTO_INCREMENT for table `tokens`
 --
 ALTER TABLE `tokens`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=116;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=119;
 
 --
 -- AUTO_INCREMENT for table `users`
@@ -278,13 +288,13 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `user_2fa`
 --
 ALTER TABLE `user_2fa`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=54;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=112;
 
 --
 -- AUTO_INCREMENT for table `user_attempts`
 --
 ALTER TABLE `user_attempts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=64;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=79;
 
 --
 -- Constraints for dumped tables

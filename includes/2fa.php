@@ -32,6 +32,12 @@ function generateAndStore2FACode(PDO $pdo, int $user_id) {
  * Verifies the provided 2FA code for a user, handling attempts and locking if necessary.
  */
 function verify2FACode(PDO $pdo, int $user_id, string $code, int $max_attempts = 5){
+
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+    }
+
     try {
         // Fetch the latest 2FA code for the user
         $record = fetchLatest2FACode($pdo, $user_id);
@@ -79,6 +85,8 @@ function handle2FA(PDO $pdo, int $user_id): array {
 
     // Fetch user details
     $user = fetchUserDetails($pdo, $user_id);
+    $user_name = $user['user']['name'];
+    $user_email = $user['user']['email'];
 
     if ($user) {
         // Check resend limits before sending a new code
@@ -91,20 +99,20 @@ function handle2FA(PDO $pdo, int $user_id): array {
             if ($code) {
 
                 // Send 2FA code via email
-                if (send2FACodeEmail($user['email'], $code)) {
+                if (send2FACodeEmail($user_email, $code)) {
 
                     // Update resend_count and last_resend
                     update2FAResendInfo($pdo, $user_id);
                     // Store user ID in session for 2FA verification
                     $_SESSION['2fa_user_id'] = $user_id;
-                    $_SESSION['temp_user_name'] = $user['name'];
+                    $_SESSION['temp_user_name'] = $user_name;
 
                     // Redirect to 2FA verification page
                     header('Location: verify_2fa.php');
                     exit();
                 } else {
                     $errors[] = "Failed to send 2FA code. Please try again.";
-                    error_log("Failed to send 2FA email to {$user['email']} for user ID {$user_id}.");
+                    error_log("Failed to send 2FA email to {$user_email} for user ID {$user_id}.");
                 }
             } else {
                 $errors[] = "Failed to generate 2FA code. Please try again.";
@@ -330,12 +338,119 @@ function reset2FALock(PDO $pdo, int $user_id): void {
 }
 
 /**
- * Fetches user details such as email and name.
+ * Handles the process of resending a 2FA code.
  */
-function fetchUserDetails(PDO $pdo, int $user_id): ?array {
-    $stmt = $pdo->prepare("SELECT email, name FROM users WHERE id = :id LIMIT 1");
-    $stmt->execute([':id' => $user_id]);
-    return $stmt->fetch(PDO::FETCH_ASSOC);
+function handleResend2FA(PDO $pdo, int $user_id, string $csrf_token): array {
+    $errors = [];
+    $success = null;
+
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['success' => $success, 'errors' => $errors];
+    }
+
+    // Reset lock status for 2FA
+    checkAndResetLock2FA($pdo, $user_id);
+
+    // If no errors, proceed with resend logic
+    if (empty($errors)) {
+        // Check resend limits
+        $resend_limit_result = check2FAResendLimit($pdo, $user_id);
+
+        if ($resend_limit_result['can_resend']) {
+            // Generate and store a new 2FA code
+            $code = generateAndStore2FACode($pdo, $user_id);
+
+            if ($code) {
+                // Fetch user email
+                $stmt = $pdo->prepare("SELECT email FROM users WHERE id = :id LIMIT 1");
+                $stmt->execute([':id' => $user_id]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($user) {
+                    // Send 2FA code via email
+                    if (send2FACodeEmail($user['email'], $code)) {
+                        // Update resend_count and last_resend
+                        update2FAResendInfo($pdo, $user_id);
+
+                        $success = "A new 2FA code has been sent to your email.";
+                    } else {
+                        $errors[] = "Failed to send 2FA code. Please try again.";
+                        error_log("Failed to resend 2FA email to {$user['email']} for user ID {$user_id}.");
+                    }
+                } else {
+                    $errors[] = "User not found.";
+                    error_log("User ID {$user_id} not found during resend 2FA.");
+                }
+            } else {
+                $errors[] = "Failed to generate 2FA code. Please try again.";
+                error_log("Failed to generate 2FA code for user ID {$user_id} during resend.");
+            }
+        } else {
+            $errors[] = $resend_limit_result['message'];
+        }
+    }
+
+    return ['success' => $success, 'errors' => $errors];
+}
+/**
+ * Handles 2FA validation and session setup.
+ */
+function handle2FALogin(PDO $pdo, int $user_id, string $entered_code): array {
+    $errors = [];
+    $redirect = null;
+
+    // Check and reset lock status for 2FA
+    checkAndResetLock2FA($pdo, $user_id);
+
+    // Validate input
+    if (empty($entered_code)) {
+        $errors[] = "2FA code is required.";
+    }
+
+    // If no input errors, verify the 2FA code
+    if (empty($errors)) {
+        $verification_result = verify2FACode($pdo, $user_id, $entered_code);
+
+        if ($verification_result === true) {
+            // Successful verification
+
+            // Fetch user details
+            $stmt = $pdo->prepare("SELECT name FROM users WHERE id = :id LIMIT 1");
+            $stmt->execute([':id' => $user_id]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($user) {
+                // Set session variables
+                $_SESSION['user_id'] = $user_id;
+                $_SESSION['user_name'] = escape($user['name']);
+
+                // Reset login attempts
+                resetLoginAttempts($pdo, $user_id);
+
+                // Unset temporary session variables
+                unset($_SESSION['2fa_user_id']);
+                unset($_SESSION['temp_user_name']);
+
+                // Regenerate session ID to prevent session fixation
+                session_regenerate_id(true);
+
+                // Set redirect URL
+                $redirect = 'index.php';
+            } else {
+                $errors[] = "User details could not be retrieved.";
+            }
+        } else {
+            $errors[] = $verification_result;
+        }
+    }
+
+    return [
+        'success' => empty($errors),
+        'errors' => $errors,
+        'redirect' => $redirect
+    ];
 }
 
 ?>

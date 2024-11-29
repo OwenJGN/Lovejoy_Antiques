@@ -15,44 +15,22 @@ if (isLoggedIn()) {
 $errors = [];
 $show_captcha = false;
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Process the login form and collect any errors
-    $errors = processLoginForm($pdo);
+    // Process the login and get the result
+    $result = processLogin($pdo);
 
-    // After processing, determine if CAPTCHA should be shown
-    $email = trim($_POST['email'] ?? '');
-    $user_id = null;
-    if (!empty($email)) {
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
-        $stmt->execute([':email' => $email]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        $user_id = $user ? $user['id'] : null;
-    }
-
-    if ($user_id) {
-        $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE user_id = :user_id AND action_type = 'login' LIMIT 1");
-        $stmt->execute([':user_id' => $user_id]);
-    } else {
-        $client_ip = $_SERVER['REMOTE_ADDR'];
-        $stmt = $pdo->prepare("SELECT * FROM user_attempts WHERE ip_address = :ip_address AND action_type = 'login' LIMIT 1");
-        $stmt->execute([':ip_address' => $client_ip]);
-    }
-    $attempt_record = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($attempt_record && $attempt_record['attempts'] >= 3 && $attempt_record['attempts'] < 7) {
-        $show_captcha = true;
-    }
+    // Extract results
+    $errors = $result['errors'];
+    $show_captcha = $result['show_captcha'];
+    $user_id = $result['user_id'];
 
     // If no errors after credential verification, proceed to 2FA
-    if (empty($errors)) {
-        if ($user_id) {
-            // Handle the 2FA process using the new function
-            $two_fa_errors = handle2FA($pdo, $user_id);
-            $errors = array_merge($errors, $two_fa_errors);
-        }
+    if (empty($errors) && $user_id) {
+        $two_fa_errors = handle2FA($pdo, $user_id);
+        $errors = array_merge($errors, $two_fa_errors);
     }
 }
+
 ?>
 <!-- Main Content Area -->
 <div class="main-content">
