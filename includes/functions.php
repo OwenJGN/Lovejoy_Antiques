@@ -12,8 +12,10 @@ require_once 'user.php';
 require_once 'email.php';
 require_once 'security.php';
 require_once 'evaluation_requests.php';
-require_once 'utilities.php';
+require_once 'process_forms.php';
 require_once 'file_upload.php';
 require_once 'login.php';
 require_once 'register.php';
+require_once 'password.php';
+require_once 'token.php';
 ?>

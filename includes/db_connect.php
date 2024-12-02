@@ -1,9 +1,9 @@
 <?php
-
-$host = 'localhost';
-$db   = 'lovejoy_antiques';
-$user = 'root'; 
-$pass = ''; 
+require_once '..\config\config.php';
+$host = HOST;
+$db   = DB;
+$user = USER; 
+$pass = PASS; 
 $charset = 'utf8mb4';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";

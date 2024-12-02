@@ -1,14 +1,12 @@
 <?php
 
-
 // Include necessary files
 require_once '../includes/db_connect.php';
 require_once '../includes/session.php';
 
 startSecureSession();
 
-//Set Content Security Policy headers
-//CSP
+// Set Content Security Policy (CSP) headers
 $CSP = "default-src 'self'; ";
 $CSP .= "script-src 'self' https://cdn.jsdelivr.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; ";
 $CSP .= "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; ";
@@ -20,6 +18,12 @@ $CSP .= "object-src 'none'; ";
 $CSP .= "base-uri 'self'; ";
 $CSP .= "form-action 'self'; ";
 $CSP .= "frame-ancestors 'self'; ";
+$CSP .= "X-Frame-Options: SAMEORIGIN ";
+$CSP .= "Referrer-Policy: same-origin ";
+$CSP .= "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload ";
+$CSP .= "Access-Control-Allow-Origin: localhost/lovejoy-antiques ";
+$CSP .= "Access-Control-Allow-Methods: GET, POST ";
+$CSP .= "Access-Control-Allow-Headers: Content-Type, Authorization ";
 
 // Set the CSP header
 header("Content-Security-Policy: $CSP");

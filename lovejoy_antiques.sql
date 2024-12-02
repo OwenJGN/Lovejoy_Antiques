@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 5.2.0
+-- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 29, 2024 at 01:39 AM
--- Server version: 10.4.25-MariaDB
--- PHP Version: 8.1.10
+-- Generation Time: Dec 02, 2024 at 06:03 PM
+-- Server version: 10.4.32-MariaDB
+-- PHP Version: 8.2.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -34,7 +34,7 @@ CREATE TABLE `evaluation_requests` (
   `preferred_contact` enum('phone','email') NOT NULL,
   `photo` varchar(255) DEFAULT NULL,
   `request_date` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `evaluation_requests`
@@ -52,7 +52,7 @@ INSERT INTO `evaluation_requests` (`id`, `user_id`, `details`, `preferred_contac
 CREATE TABLE `security_questions` (
   `id` int(11) NOT NULL,
   `question` text NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `security_questions`
@@ -83,7 +83,7 @@ CREATE TABLE `tokens` (
   `type` enum('verification','password_reset') NOT NULL,
   `expires_at` datetime NOT NULL,
   `created_at` datetime DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `tokens`
@@ -110,7 +110,7 @@ CREATE TABLE `users` (
   `is_admin` tinyint(1) DEFAULT 0,
   `registered_at` datetime DEFAULT current_timestamp(),
   `is_verified` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `users`
@@ -132,7 +132,7 @@ INSERT INTO `users` (`id`, `name`, `email`, `password`, `phone`, `is_admin`, `re
 CREATE TABLE `user_2fa` (
   `id` int(10) UNSIGNED NOT NULL,
   `user_id` int(10) UNSIGNED NOT NULL,
-  `code` varchar(6) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `code` varchar(6) NOT NULL,
   `expires_at` datetime NOT NULL,
   `attempts` int(10) UNSIGNED NOT NULL DEFAULT 0,
   `last_resend` datetime NOT NULL,
@@ -162,7 +162,7 @@ CREATE TABLE `user_attempts` (
   `attempts` int(11) NOT NULL DEFAULT 0,
   `last_attempt` datetime DEFAULT NULL,
   `lock_until` datetime DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `user_attempts`
@@ -184,7 +184,7 @@ CREATE TABLE `user_security_questions` (
   `user_id` int(11) NOT NULL,
   `security_question_id` int(11) NOT NULL,
   `security_answer` varchar(255) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `user_security_questions`
@@ -276,13 +276,13 @@ ALTER TABLE `security_questions`
 -- AUTO_INCREMENT for table `tokens`
 --
 ALTER TABLE `tokens`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=119;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=127;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
 --
 -- AUTO_INCREMENT for table `user_2fa`

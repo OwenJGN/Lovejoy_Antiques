@@ -85,23 +85,6 @@ function validateResetAccess(PDO $pdo, string $source, ?string $token): array {
 }
 
 /**
- * Handles the password reset form submission.
- */
-function handlePasswordReset(PDO $pdo, bool $is_security_questions, ?int $user_id, ?string $token): array {
-    // Process new password based on the access method
-    if ($is_security_questions) {
-        return processNewPassword($pdo, $is_security_questions, $user_id, '');
-    } elseif (!empty($token)) {
-        return processNewPassword($pdo, $is_security_questions, null, $token);
-    } else {
-        return [
-            'success' => '',
-            'errors' => ['Invalid password reset access method.']
-        ];
-    }
-}
-
-/**
  * Hash data using BCRYPT
  */
 function hashData($data) {
@@ -109,27 +92,50 @@ function hashData($data) {
 }
 
 /**
- * Validate password strength
+ * Check security questions and validate answers
  */
-function validatePassword($password) {
+function checkSecurityQuestions($pdo, $user_id) {
     $errors = [];
-    if (empty($password)) {
-        $errors[] = "New password is required.";
-    } elseif (strlen($password) < 8) {
-        $errors[] = "Password must be at least 8 characters long.";
-    } 
-    if (!preg_match('/[A-Z]/', $password)) {
-        $errors[] = "Password must contain at least one uppercase letter.";
+    $success = false;
+
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['errors' => $errors, 'success' => $success];
     }
-    if (!preg_match('/[a-z]/', $password)) {
-        $errors[] = "Password must contain at least one lowercase letter.";
+
+    // Fetch stored security answers
+    $stored_answers = fetchUserSecurityAnswers($pdo, $user_id);
+    
+    // Retrieve and sanitize user-provided answers
+    $provided_answers = [
+        strtolower(trim($_POST['security_answer_1'] ?? '')),
+        strtolower(trim($_POST['security_answer_2'] ?? '')),
+        strtolower(trim($_POST['security_answer_3'] ?? ''))
+    ];
+
+    // Validate that all answers are provided
+    foreach ($provided_answers as $index => $answer) {
+        if (empty($answer)) {
+            $errors[] = "Answer to Security Question " . ($index + 1) . " is required.";
+        }
     }
-    if (!preg_match('/[0-9]/', $password)) {
-        $errors[] = "Password must contain at least one number.";
+
+    if(empty($errors)){
+        // Verify each provided answer against the stored hashed answer
+        foreach ($stored_answers as $index => $stored) {
+            if (!password_verify($provided_answers[$index], $stored['hashed_answer'])) {
+                $errors[] = "Incorrect answer to the security question/s.";
+                return ['errors' => $errors, 'success' => $success];
+            }
+        }
     }
-    if (!preg_match('/[\W]/', $password)) {
-        $errors[] = "Password must contain at least one special character.";
+    
+    // All answers match
+    if(empty($errors)){
+        $_SESSION['can_reset_password'] = true;
+        $success = true;
     }
-    return $errors;
+    return ['errors' => $errors, 'success' => $success];
 }
 ?>
