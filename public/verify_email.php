@@ -1,8 +1,10 @@
 <?php
-// verify_email.php
+/*
+* Verify email link page
+*/
 
 require_once 'header.php';
-require_once '../includes/functions.php'; // Include functions.php for processing
+require_once '../includes/functions.php';
 
 $errors = [];
 $success = '';
@@ -27,19 +29,23 @@ elseif (isset($_GET['token'])) { // Changed to elseif to ensure mutual exclusivi
     $errors = $result['errors'];
 }
 ?>
-<!-- HTML Output -->
+
+<!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">
+
         <?php if ($success): ?>
             <div class="alert alert-success" role="alert">
                 <?php echo $success; ?>
             </div>
-        <?php elseif (!empty($errors)): ?> <!-- Changed to elseif to prevent both messages -->
+
+        <?php elseif (!empty($errors)): ?> 
             <div class="alert alert-danger" role="alert">
                 <?php foreach ($errors as $error): ?>
                     <p><?php echo $error; ?></p>
                 <?php endforeach; ?>
             </div>
+
         <?php else: ?>
             <!-- Verification Notice After Registration -->
             <div class="alert alert-info" role="alert">

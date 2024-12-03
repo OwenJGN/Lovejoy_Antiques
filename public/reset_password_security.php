@@ -1,8 +1,11 @@
 <?php
-// reset_password_security.php
+/*
+* Reset passwords using security
+*/
 
-require_once 'header.php'; // Include your header (HTML head, navigation, etc.)
-require_once '../includes/functions.php'; // Include functions.php for processing
+
+require_once 'header.php'; 
+require_once '../includes/functions.php'; 
 
 checkAccess('user');
 
@@ -93,5 +96,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-require_once 'footer.php'; // Include your footer (closing tags, scripts, etc.)
+require_once 'footer.php';
 ?>

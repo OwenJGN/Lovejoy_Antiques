@@ -1,4 +1,7 @@
 <?php
+/*
+* Account Management Page
+*/
 
 // Include necessary files
 require_once 'header.php';
@@ -30,7 +33,6 @@ if ($result['success']) {
     $user_name = $result['user']['name'];
     $user_email = $result['user']['email'];
 } else {
-    // Handle errors (e.g., user not found or database error)
     $_SESSION['error_message'] = $result['error'];
     header('Location: ' . ($result['error'] === "User not found." ? 'logout.php' : 'account.php'));
     exit();
@@ -38,6 +40,7 @@ if ($result['success']) {
 
 ?>
 
+<!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">
         <h2 class="mb-4">Account Management</h2>
@@ -104,4 +107,4 @@ if ($result['success']) {
 </div>
 
 <!-- Footer Section -->
-<?php include 'footer.php'; // Assuming you have a separate footer file ?>
+<?php include 'footer.php';  ?>

@@ -1,13 +1,15 @@
 <?php
-require_once 'init.php';
+/*
+ * Initializes the header section of the Lovejoy’s Antique Evaluation website.
+ */
+
+require_once 'init.php'; // Initializes the application and database connection
 
 // Check if user is logged in
 $isLoggedIn = isLoggedIn();
 $userName = $isLoggedIn ? escape($_SESSION['user_name']) : '';
 $isAdmin = isAdmin();
 
-// Generate CSRF token for forms if needed
-$csrf_token = generateCsrfToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -15,7 +17,9 @@ $csrf_token = generateCsrfToken();
     <meta charset="UTF-8">
     <title>Lovejoy’s Antique Evaluation</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="../assets/css/styles.css">
 </head>
 <body>
@@ -70,4 +74,3 @@ $csrf_token = generateCsrfToken();
         </div>
     </nav>
 
-    

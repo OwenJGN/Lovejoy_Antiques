@@ -9,6 +9,4 @@ define('HOST', 'localhost');
 define('DB', 'lovejoy_antiques');
 define('USER', 'root');
 define('PASS', '');
-
-
 ?>

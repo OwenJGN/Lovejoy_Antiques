@@ -1,28 +1,28 @@
 <?php
-// resend_verification.php
+/*
+*  Resend password reset link
+*/
 
 require_once 'header.php';
-require_once '..\includes\functions.php'; // Adjust the path as necessary
+require_once '..\includes\functions.php'; 
 
 $errors = [];
 $success = '';
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $errors = [];
-    $success = false;
+
     // Retrieve and sanitize input
     $email = trim($_POST['email'] ?? '');
 
     // Process the resend verification form using the function
-    $result = processResendVerificationOrResetForm($pdo, $email, 'password_reset');
-
+    $result = processPasswordResetForm($pdo, $email);
     // Assign results to variables for display
     $success = $result['success'];
     $errors = $result['errors'];
 }
 ?>
-<!-- HTML Output -->
+<!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">
         <h2 class="mb-4">Send Password Reset Link</h2>

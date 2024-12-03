@@ -70,10 +70,11 @@ function verify2FACode(PDO $pdo, int $user_id, string $code, int $max_attempts =
                 return "Invalid or expired 2FA code.";
             }
         }
-        
-        return "Invalid or expired 2FA code.";
+        $errors[] = "Invalid or expired 2FA code.";
+        return $errors;
     } catch (PDOException $e) {
-        return "Error verifying 2FA code for user ID {$user_id}: " . $e->getMessage();
+        $errors[] = "Error verifying 2FA code for user ID {$user_id}: " . $e->getMessage();
+        return $errors;
     }
 }
 
@@ -134,8 +135,8 @@ function handle2FA(PDO $pdo, int $user_id): array {
  */
 function check2FAResendLimit(PDO $pdo, int $user_id): array {
     // Define limits
-    $max_resends = 3; // Maximum number of resends allowed
-    $resend_cooldown_minutes = 5; // Cooldown period in minutes
+    $max_resends = 5; // Maximum number of resends allowed
+    $resend_cooldown_minutes = 2; // Cooldown period in minutes
 
     // Fetch the latest 2FA record for the user
     $stmt = $pdo->prepare("SELECT resend_count, last_resend FROM user_2fa WHERE user_id = :user_id ORDER BY id DESC LIMIT 1");

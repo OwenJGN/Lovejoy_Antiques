@@ -7,6 +7,9 @@ define('ALLOWED_FILE_TYPES', ['image/jpeg', 'image/png', 'image/gif']);
 define('MAX_FILE_SIZE', 2 * 1024 * 1024); // 2MB
 define('ALLOWED_CONTACT_METHODS', ['phone', 'email']);
 
+/*
+* Get all of the evaluations request for viewing
+*/
 function fetchEvaluationRequests($pdo) {
     try {
         $stmt = $pdo->prepare("

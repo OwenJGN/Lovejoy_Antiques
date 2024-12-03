@@ -2,9 +2,94 @@
 require_once 'functions.php';
 
 /**
- * Resend verification email with rate limiting
+ * Helper function to handle rate limiting, token generation, email sending, and attempt updates.
  */
-function processResendVerificationOrResetForm($pdo, $email, $action) {
+function handleRateLimitingAndSendEmail($pdo, $user, $action_type, $action_label, $token_type, $token_length, $token_expiry, $email_send_function, &$errors, &$success, $email_message_sent) {
+    // Rate limiting parameters
+    $current_time = new DateTime();
+    $last_attempt = $user['last_attempt'] ? new DateTime($user['last_attempt']) : null;
+    $lock_until = $user['lock_until'] ? new DateTime($user['lock_until']) : null;
+    $attempts = $user['attempts'] ?? 0;
+
+    // Check if user is currently locked out
+    if ($lock_until && $current_time < $lock_until) {
+        $remaining = $current_time->diff($lock_until);
+        $hours = $remaining->h + ($remaining->days * 24);
+        $minutes = $remaining->i;
+        $errors[] = "You have reached the maximum number of {$action_label} attempts. Please try again after {$hours} hours and {$minutes} minutes.";
+    } else {
+        // Check if the last attempt was within the rate limiting window (24 hours)
+        $hours_passed = 0;
+        if ($last_attempt) {
+            $diff = $current_time->diff($last_attempt);
+            $hours_passed = ($diff->days * 24) + $diff->h + (($diff->i > 0 || $diff->s > 0) ? 1 : 0);
+        }
+
+        // Determine if within rate limiting window
+        if ($hours_passed < 24) {
+            if ($attempts >= 3) {
+                // Lock the user out for 24 hours
+                $errors[] = "You have reached the maximum number of {$action_label} attempts. Please try again after 24 hours.";
+                $stmt = $pdo->prepare("
+                    UPDATE user_attempts
+                    SET lock_until = :lock_until
+                    WHERE user_id = :user_id AND action_type = :action_type
+                ");
+                $lock_until_time = (clone $current_time)->modify('+24 hours')->format('Y-m-d H:i:s');
+                $stmt->execute([
+                    ':lock_until' => $lock_until_time,
+                    ':user_id' => $user['id'],
+                    ':action_type' => $action_type
+                ]);
+            }
+        }
+
+        if (empty($errors)) {
+            // Generate a new token (overwrites existing if any)
+            $token = generateAndStoreToken($pdo, $user['id'], $token_type, $token_length, $token_expiry);
+
+            if (!$token) {
+                $errors[] = "An error occurred while generating the token. Please try again later.";
+            } else {
+                // Send the appropriate email
+                if (function_exists($email_send_function)) {
+                    $email_sent = call_user_func($email_send_function, $user['email'], $token);
+                    if ($email_sent) {
+                        $success = $email_message_sent;
+                    } else {
+                        $errors[] = "Failed to send the email. Please try again later.";
+                    }
+                } else {
+                    $errors[] = "Email sending function not defined.";
+                }
+
+                // Update resend attempts in user_attempts table
+                $stmt = $pdo->prepare("
+                    INSERT INTO user_attempts (user_id, action_type, last_attempt, attempts, lock_until)
+                    VALUES (:user_id, :action_type, :current_time_insert, :attempts_insert, NULL)
+                    ON DUPLICATE KEY UPDATE 
+                        last_attempt = :current_time_update,
+                        attempts = :attempts_update,
+                        lock_until = NULL
+                ");
+                $new_attempts = ($last_attempt && $hours_passed < 24) ? $attempts + 1 : 1;
+                $stmt->execute([
+                    ':user_id' => $user['id'],
+                    ':action_type' => $action_type,
+                    ':current_time_insert' => $current_time->format('Y-m-d H:i:s'),
+                    ':attempts_insert' => $new_attempts,
+                    ':current_time_update' => $current_time->format('Y-m-d H:i:s'),
+                    ':attempts_update' => $new_attempts
+                ]);
+            }
+        }
+    }
+}
+
+/**
+ * Process function for resending verification email.
+ */
+function processResendVerificationForm($pdo, $email) {
     $errors = [];
     $success = '';
 
@@ -16,30 +101,19 @@ function processResendVerificationOrResetForm($pdo, $email, $action) {
     }
 
     if (empty($errors)) {
-        // Determine action-specific parameters
-        if ($action === 'verification') {
-            $action_type = 'verification';
-            $email_status_check = true; // Check if email is already verified
-            $email_message_verified = "Your email is already verified. You can <a href='login.php'>log in</a>.";
-            $email_message_sent = "A new verification email has been sent to your email address.";
-            $email_send_function = 'sendVerificationEmail';
-            $token_type = 'verification';
-            $token_length = 16;
-            $token_expiry = '+24 hours';
-        } elseif ($action === 'password_reset') {
-            $action_type = 'password_reset';
-            $email_status_check = false; // No need to check verification status
-            $email_message_verified = ""; // Not applicable
-            $email_message_sent = "A password reset link has been sent to your email address.";
-            $email_send_function = 'sendPasswordResetEmail';
-            $token_type = 'password_reset';
-            $token_length = 32; // Typically longer for security
-            $token_expiry = '+1 hour'; // Password reset tokens often have shorter expiry
-        }
+        // Action-specific parameters
+        $action_type = 'verification';
+        $action_label = 'verification';
+        $email_message_verified = "Your email is already verified. You can login!";
+        $email_message_sent = "A new verification email has been sent to your email address.";
+        $email_send_function = 'sendVerificationEmail';
+        $token_type = 'verification';
+        $token_length = 16;
+        $token_expiry = '+24 hours';
 
         // Fetch user and relevant attempt data
         $stmt = $pdo->prepare("
-            SELECT users.id, users.is_verified, user_attempts.last_attempt, user_attempts.attempts, user_attempts.lock_until 
+            SELECT users.id, users.email, users.is_verified, user_attempts.last_attempt, user_attempts.attempts, user_attempts.lock_until 
             FROM users
             LEFT JOIN user_attempts 
                 ON users.id = user_attempts.user_id 
@@ -53,99 +127,68 @@ function processResendVerificationOrResetForm($pdo, $email, $action) {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user) {
-            // Handle verification action
-            if ($action === 'verification' && $user['is_verified'] == 1) {
+            if ($user['is_verified'] == 1) {
                 $success = $email_message_verified;
             } else {
-                // Rate limiting parameters
-                $current_time = new DateTime();
-                $last_attempt = $user['last_attempt'] ? new DateTime($user['last_attempt']) : null;
-                $lock_until = $user['lock_until'] ? new DateTime($user['lock_until']) : null;
-                $attempts = $user['attempts'] ?? 0;
-
-                // Check if user is currently locked out
-                if ($lock_until && $current_time < $lock_until) {
-                    $remaining = $current_time->diff($lock_until);
-                    $hours = $remaining->h + ($remaining->days * 24);
-                    $minutes = $remaining->i;
-                    $errors[] = "You have reached the maximum number of {$action} attempts. Please try again after {$hours} hours and {$minutes} minutes.";
-                } else {
-                    // Check if the last attempt was within the rate limiting window (24 hours)
-                    $hours_passed = 0;
-                    if ($last_attempt) {
-                        $diff = $current_time->diff($last_attempt);
-                        $hours_passed = ($diff->days * 24) + $diff->h + (($diff->i > 0 || $diff->s > 0) ? 1 : 0);
-                    }
-
-                    // Determine if within rate limiting window
-                    if ($hours_passed < 24) {
-                        if ($attempts >= 3) {
-                            // Lock the user out for 24 hours
-                            $errors[] = "You have reached the maximum number of {$action} attempts. Please try again after 24 hours.";
-                            $stmt = $pdo->prepare("
-                                UPDATE user_attempts
-                                SET lock_until = :lock_until
-                                WHERE user_id = :user_id AND action_type = :action_type
-                            ");
-                            $lock_until_time = (clone $current_time)->modify('+24 hours')->format('Y-m-d H:i:s');
-                            $stmt->execute([
-                                ':lock_until' => $lock_until_time,
-                                ':user_id' => $user['id'],
-                                ':action_type' => $action_type
-                            ]);
-                        }
-                    }
-
-                    if (empty($errors)) {
-                        // Generate a new token (overwrites existing if any)
-                        $token = generateAndStoreToken($pdo, $user['id'], $token_type, $token_length, $token_expiry);
-
-                        if (!$token) {
-                            $errors[] = "An error occurred while generating the token. Please try again later.";
-                        } else {
-                            // Send the appropriate email
-                            if (function_exists($email_send_function)) {
-                                $email_sent = call_user_func($email_send_function, $email, $token);
-                                if ($email_sent) {
-                                    $success = $email_message_sent;
-                                } else {
-                                    $errors[] = "Failed to send the email. Please try again later.";
-                                }
-                            } else {
-                                $errors[] = "Email sending function not defined.";
-                            }
-
-                            // Update resend attempts in user_attempts table
-                            $stmt = $pdo->prepare("
-                                INSERT INTO user_attempts (user_id, action_type, last_attempt, attempts, lock_until)
-                                VALUES (:user_id, :action_type, :current_time_insert, :attempts_insert, NULL)
-                                ON DUPLICATE KEY UPDATE 
-                                    last_attempt = :current_time_update,
-                                    attempts = :attempts_update,
-                                    lock_until = NULL
-                            ");
-                            $new_attempts = ($last_attempt && $hours_passed < 24) ? $attempts + 1 : 1;
-                            $stmt->execute([
-                                ':user_id' => $user['id'],
-                                ':action_type' => $action_type,
-                                ':current_time_insert' => $current_time->format('Y-m-d H:i:s'),
-                                ':attempts_insert' => $new_attempts,
-                                ':current_time_update' => $current_time->format('Y-m-d H:i:s'),
-                                ':attempts_update' => $new_attempts
-                            ]);
-                        }
-                    }
-                }
+                handleRateLimitingAndSendEmail($pdo, $user, $action_type, $action_label, $token_type, $token_length, $token_expiry, $email_send_function, $errors, $success, $email_message_sent);
             }
         } else {
-            if ($action === 'password_reset') {
-                // For password reset, inform user that email has been sent regardless of account existence
-                // to prevent email enumeration
-                $success = "If an account with that email exists, a password reset link has been sent.";
-            } else {
-                // For verification, inform user that no account exists
-                $errors[] = "No account found with that email address.";
-            }
+            $errors[] = "No account found with that email address.";
+        }
+    }
+
+    return [
+        'success' => $success,
+        'errors'  => $errors
+    ];
+}
+
+/**
+ * Process function for password reset request.
+ */
+function processPasswordResetForm($pdo, $email) {
+    $errors = [];
+    $success = '';
+
+    // Validate email format
+    if (empty($email)) {
+        $errors[] = "Email is required.";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = "Invalid email format.";
+    }
+
+    if (empty($errors)) {
+        // Action-specific parameters
+        $action_type = 'password_reset';
+        $action_label = 'password reset';
+        $email_message_sent = "If an account with that email exists, a password reset link has been sent.";
+        $email_send_function = 'sendPasswordResetEmail';
+        $token_type = 'password_reset';
+        $token_length = 32;
+        $token_expiry = '+1 hour';
+
+        // Fetch user and relevant attempt data
+        $stmt = $pdo->prepare("
+            SELECT users.id, users.email, users.is_verified, user_attempts.last_attempt, user_attempts.attempts, user_attempts.lock_until 
+            FROM users
+            LEFT JOIN user_attempts 
+                ON users.id = user_attempts.user_id 
+                AND user_attempts.action_type = :action_type
+            WHERE users.email = :email
+        ");
+        $stmt->execute([
+            ':action_type' => $action_type,
+            ':email' => $email
+        ]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($user) {
+            handleRateLimitingAndSendEmail($pdo, $user, $action_type, $action_label, $token_type, $token_length, $token_expiry, $email_send_function, $errors, $success, $email_message_sent);
+        }
+
+        // For password reset, inform user that email has been sent regardless of account existence
+        if(empty($errors)){
+             $success = $email_message_sent;
         }
     }
 
@@ -256,20 +299,7 @@ function processEmailVerification($pdo, $token) {
         $errors[] = "Emails do not match.";
     }
 
-    // Load the weak password list
-    $weak_passwords_file = __DIR__ . '\common_passwords\10-million-passwords.txt';
-    if (!file_exists($weak_passwords_file)) {
-        $errors[] = "File not found at: $weak_passwords_file";
-    }
-    else{
-        $weak_passwords = file($weak_passwords_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        $isWeakPassword = in_array($password, $weak_passwords);
-        // Check if the password is too common
-        if ($isWeakPassword) {
-            $errors[] = "Password is too common, try another one.";
-        }
-    }
-    
+    // Validate the pasword
     $errors = validatePassword($password);
 
     // Confirm password
@@ -468,9 +498,8 @@ function processLoginForm(PDO $pdo): array {
                 return $errors;
             } else {
                 // Credentials are correct, proceed to handle 2FA
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_name'] = $user['name'];
-                $_SESSION['is_admin'] = $user['is_admin'];
+                $_SESSION['2fa_user_id'] = $user['name'];
+
 
                 $two_fa_errors = handle2FA($pdo, $user_id);
                 if (!empty($two_fa_errors)) {

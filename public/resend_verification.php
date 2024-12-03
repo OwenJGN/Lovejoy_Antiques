@@ -1,8 +1,10 @@
 <?php
-// resend_verification.php
+/*
+* Resend verification email
+*/
 
 require_once 'header.php';
-require_once '..\includes\functions.php'; // Adjust the path as necessary
+require_once '..\includes\functions.php'; 
 
 $errors = [];
 $success = '';
@@ -17,17 +19,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
 
     // Process the resend verification form using the function
-    $result = processResendVerificationOrResetForm($pdo, $email, 'verification');
+    $result = processResendVerificationForm($pdo, $email);
 
     // Assign results to variables for display
     $success = $result['success'];
     $errors = $result['errors'];
 }
 ?>
-<!-- HTML Output -->
+
+<!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">
         <h2 class="mb-4">Resend Verification Email</h2>
+
+        <?php if (!empty($success)): ?>
+            <div class="alert alert-success" role="alert">
+                <?php echo escape($success); ?>
+            </div>
+        <?php endif; ?>
 
         <?php if (!empty($errors)): ?>
             <div class="alert alert-danger" role="alert">

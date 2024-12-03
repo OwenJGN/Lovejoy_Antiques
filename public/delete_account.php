@@ -1,5 +1,7 @@
 <?php
-// delete_account.php
+/*
+* Delete Account
+*/
 
 // Start a secure session
 session_start();
@@ -31,19 +33,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
 
             // Delete related records from other tables
-            // Example: Delete evaluation requests
+            // Delete evaluation requests
             $stmt = $pdo->prepare("DELETE FROM evaluation_requests WHERE user_id = :user_id");
             $stmt->execute([':user_id' => $user_id]);
 
-            // Example: Delete security questions
+            // Delete security questions
             $stmt = $pdo->prepare("DELETE FROM user_security_questions WHERE user_id = :user_id");
             $stmt->execute([':user_id' => $user_id]);
 
-            // Example: Delete tokens
+            // Delete tokens
             $stmt = $pdo->prepare("DELETE FROM tokens WHERE user_id = :user_id");
             $stmt->execute([':user_id' => $user_id]);
 
-            // Example: Delete user attempts
+            // Delete user attempts
             $stmt = $pdo->prepare("DELETE FROM user_attempts WHERE user_id = :user_id");
             $stmt->execute([':user_id' => $user_id]);
 

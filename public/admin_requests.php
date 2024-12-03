@@ -1,8 +1,13 @@
 <?php
-require_once 'header.php';
-require_once '..\includes\functions.php';
+/*
+ * View Requests (Admin)
+ */
 
-// Check if user is logged in and is admin
+ // Include necessary files and start session
+require_once 'header.php';                
+require_once '..\includes\functions.php'; 
+
+// Ensure the user has 'admin' access level
 checkAccess('admin');
 
 // Fetch evaluation requests from the database
@@ -12,9 +17,11 @@ if ($requests === false) {
 }
 ?>
 
+<!-- Main Content Area -->
 <div class="container my-4">
     <h2 class="mb-4">Evaluation Requests</h2>
 
+    <!-- Display Error Message if Fetching Requests Fails -->
     <?php if (isset($error_message)): ?>
         <div class="alert alert-danger" role="alert">
             <?php echo escape($error_message); ?>
@@ -35,11 +42,15 @@ if ($requests === false) {
                     </tr>
                 </thead>
                 <tbody>
+
+                    <!-- Check if There Are No Evaluation Requests -->
                     <?php if (count($requests) === 0): ?>
                         <tr>
                             <td colspan="8" class="text-center">No evaluation requests found.</td>
                         </tr>
                     <?php else: ?>
+
+                        <!-- Iterate Through Each Evaluation Request -->
                         <?php foreach ($requests as $request): ?>
                             <tr>
                                 <th scope="row"><?php echo escape($request['id']); ?></th>

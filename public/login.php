@@ -1,5 +1,7 @@
 <?php
-// login.php
+/*
+* Login Form 
+*/
 
 require_once 'header.php';
 require_once '..\includes\functions.php';

@@ -1,20 +1,26 @@
 <?php
-// view_account.php
+/*
+ * Account Management Page
+ */
 
 // Include necessary files and start session
-require_once 'header.php';
-require_once '..\includes\functions.php';
+require_once 'header.php';                
+require_once '..\includes\functions.php'; 
 
+// Ensure the user has 'user' access level
 checkAccess('user');
-// Fetch user data if needed
+
+// Retrieve the logged-in user's ID from the session
 $user_id = $_SESSION['user_id'];
 ?>
 
+<!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">
         <h2 class="mb-4">Account Management</h2>
         <hr>
-        <!-- Success and Error Messages -->
+
+        <!-- Success Messages -->
         <?php if (isset($_SESSION['success_message'])): ?>
             <div class="alert alert-success">
                 <?php 
@@ -24,6 +30,7 @@ $user_id = $_SESSION['user_id'];
             </div>
         <?php endif; ?>
 
+        <!-- Error Messages -->
         <?php if (isset($_SESSION['error_message'])): ?>
             <div class="alert alert-danger">
                 <?php 
@@ -40,6 +47,7 @@ $user_id = $_SESSION['user_id'];
                 <!-- CSRF Token -->
                 <input type="hidden" name="csrf_token" value="<?php echo escape(generateCsrfToken()); ?>">
                 
+                <!-- Submit Button -->
                 <button type="submit" class="btn btn-primary">Send Password Reset Link to Email</button>
             </form>
         </div>
@@ -53,12 +61,14 @@ $user_id = $_SESSION['user_id'];
                 <!-- CSRF Token -->
                 <input type="hidden" name="csrf_token" value="<?php echo escape(generateCsrfToken()); ?>">
 
+                <!-- Email Input -->
                 <div class="mb-3">
                     <label for="email" class="form-label">Registered Email Address:</label>
                     <input type="email" class="form-control" id="email" name="email" required
                            value="<?php echo isset($_POST['email']) ? escape($_POST['email']) : ''; ?>">
                 </div>
 
+                <!-- Submit Button -->
                 <button type="submit" class="btn btn-primary">Proceed to Security Questions</button>
             </form>
         </div>
@@ -72,10 +82,16 @@ $user_id = $_SESSION['user_id'];
                 <!-- CSRF Token -->
                 <input type="hidden" name="csrf_token" value="<?php echo escape(generateCsrfToken()); ?>">
 
+                <!-- Submit Button -->
                 <button type="submit" class="btn btn-danger">Delete My Account</button>
             </form>
         </div>
     </div>
 </div>
+
+<!-- Footer -->
+<?php
+require_once 'footer.php';
+?>
 </body>
 </html>
