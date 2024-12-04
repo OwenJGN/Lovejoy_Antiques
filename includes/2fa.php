@@ -9,6 +9,7 @@ function generateAndStore2FACode(PDO $pdo, int $user_id) {
     // Generate a random 6-digit code using a cryptographically secure method
     $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     
+    $hash_code = password_hash($code, PASSWORD_BCRYPT);
     // Set expiration time (e.g., 10 minutes from now)
     $expires_at = date('Y-m-d H:i:s', strtotime('+10 minutes'));
     
@@ -19,7 +20,7 @@ function generateAndStore2FACode(PDO $pdo, int $user_id) {
         deleteExisting2FACodes($pdo, $user_id);
         
         // Insert the new 2FA code into the database
-        insert2FACode($pdo, $user_id, $code, $expires_at, $resend_count);
+        insert2FACode($pdo, $user_id, $hash_code, $expires_at, $resend_count);
         
         return $code;
     } catch (PDOException $e) {
@@ -58,7 +59,7 @@ function verify2FACode(PDO $pdo, int $user_id, string $code, int $max_attempts =
             }
 
             // Check if the code matches and is not expired
-            if ($record['code'] === $code && new DateTime() <= new DateTime($record['expires_at'])) {
+            if (password_verify($code, $record['code']) && new DateTime() <= new DateTime($record['expires_at'])) {
                 // Successful verification, delete the 2FA code
                 delete2FACodeById($pdo, $record['id']);
                 
@@ -74,7 +75,7 @@ function verify2FACode(PDO $pdo, int $user_id, string $code, int $max_attempts =
         return $errors;
     } catch (PDOException $e) {
         $errors[] = "Error verifying 2FA code for user ID {$user_id}: " . $e->getMessage();
-        return $errors;
+        
     }
 }
 

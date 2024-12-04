@@ -138,6 +138,4 @@ function checkSecurityQuestions($pdo, $user_id) {
     }
     return ['errors' => $errors, 'success' => $success];
 }
-
-
 ?>

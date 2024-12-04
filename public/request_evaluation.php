@@ -19,7 +19,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $success = $result['success'];
 }
 ?>
-
 <!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">
@@ -50,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="mb-3">
                 <label for="details" class="form-label">Details of the Antique<span class="text-danger">*</span></label>
                 <textarea class="form-control" id="details" name="details" rows="5" required maxlength="1000"
-                    placeholder="Provide a detailed description of your antique item."><?php echo isset($_POST['details']) ? escape($_POST['details']) : ''; ?></textarea>
+                    placeholder="Provide a detailed description of your antique item."><?php echo isset($_POST['details']) ? $_POST['details'] : ''; ?></textarea>
                 <div class="form-text">Please describe the antique item you wish to have evaluated.</div>
             </div>
 

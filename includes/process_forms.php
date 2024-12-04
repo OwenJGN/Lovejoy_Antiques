@@ -499,7 +499,7 @@ function processLoginForm(PDO $pdo): array {
             } else {
                 // Credentials are correct, proceed to handle 2FA
                 $_SESSION['2fa_user_id'] = $user['name'];
-
+                $_SESSION['is_admin'] = $user['is_admin'];
 
                 $two_fa_errors = handle2FA($pdo, $user_id);
                 if (!empty($two_fa_errors)) {
