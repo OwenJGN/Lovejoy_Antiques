@@ -175,7 +175,7 @@ function handleFileUpload($file, &$errors) {
 
     //Generate a unique filename
     $photo_filename = generateUniqueFilename($file['name']);
-    $destination = '../public/uploads/' . $photo_filename;
+    $destination = '../uploads/' . $photo_filename;
 
     //Save encrypted file
     if (!saveEncryptedFile($encrypted_content, $destination, $errors)) {

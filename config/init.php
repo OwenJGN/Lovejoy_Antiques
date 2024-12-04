@@ -1,8 +1,8 @@
 <?php
 
 // Include necessary files
-require_once '../includes/db_connect.php';
-require_once '../includes/session.php';
+require_once '../scripts/db_connect.php';
+require_once '../scripts/session.php';
 
 startSecureSession();
 

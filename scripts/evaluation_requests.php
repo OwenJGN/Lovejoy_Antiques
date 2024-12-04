@@ -24,7 +24,7 @@ function fetchEvaluationRequests($pdo) {
 
         foreach ($requests as &$request) {
             if (!empty($request['photo'])) {
-                $filepath = '../public/uploads/' . basename($request['photo']);
+                $filepath = '../uploads/' . basename($request['photo']);
                 if (file_exists($filepath)) {
                     $encrypted_content = file_get_contents($filepath);
                     if ($encrypted_content !== false) {

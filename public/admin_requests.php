@@ -5,7 +5,7 @@
 
  // Include necessary files and start session
 require_once 'header.php';                
-require_once '..\includes\functions.php'; 
+require_once '..\scripts\functions.php'; 
 
 // Ensure the user has 'admin' access level
 checkAccess('admin');

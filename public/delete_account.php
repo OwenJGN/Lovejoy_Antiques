@@ -7,8 +7,8 @@
 session_start();
 
 // Include necessary files
-require_once '../includes/db_connect.php';
-require_once '../includes/functions.php';
+require_once '../scripts/db_connect.php';
+require_once '../scripts/functions.php';
 
 // Check if the user is logged in
 checkAccess('user');

@@ -4,7 +4,7 @@
 */
 
 require_once 'header.php';
-require_once '..\includes\functions.php';
+require_once '..\scripts\functions.php';
 require_once '..\config\config.php';
 
 // Redirect if already logged in

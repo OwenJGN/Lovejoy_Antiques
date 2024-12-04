@@ -3,7 +3,7 @@
  * Initializes the header section of the Lovejoy’s Antique Evaluation website.
  */
 
-require_once 'init.php'; // Initializes the application and database connection
+require_once '../config/init.php'; // Initializes the application and database connection
 
 // Check if user is logged in
 $isLoggedIn = isLoggedIn();
