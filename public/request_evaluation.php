@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $success = $result['success'];
 }
 ?>
+
 <!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">

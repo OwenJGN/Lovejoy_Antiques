@@ -17,7 +17,6 @@ $isAdmin = isAdmin();
     <meta charset="UTF-8">
     <title>Lovejoy’s Antique Evaluation</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="../assets/css/styles.css">

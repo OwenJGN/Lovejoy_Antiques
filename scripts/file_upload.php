@@ -10,6 +10,7 @@ function encryptData($data) {
     // Store the IV with the encrypted data for decryption
     return base64_encode($iv . $encrypted);
 }
+
 /**
  * Decrypt data using AES-256-CBC
  */
@@ -20,6 +21,7 @@ function decryptData($data) {
     $encrypted = substr($data, $iv_length);
     return openssl_decrypt($encrypted, 'AES-256-CBC', ENCRYPTION_KEY, 0, $iv);
 }
+
 /**
  * Check for upload errors
  */
@@ -137,7 +139,7 @@ function handleFileUpload($file, &$errors) {
 
     // Check if a file was uploaded
     if ($file['error'] === UPLOAD_ERR_NO_FILE) {
-        // No file uploaded; it's optional
+        // No file uploaded
         return $photo_filename;
     }
 

@@ -1,4 +1,7 @@
 <?php
+/*
+* Initial php file run on each page
+*/
 
 // Include necessary files
 require_once '../scripts/db_connect.php';

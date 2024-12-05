@@ -13,9 +13,7 @@ $redirect = null;
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Retrieve and sanitize 2FA code input
-    $entered_code = trim($_POST['2fa_code'] ?? '');
-
+    
     // User ID should already be stored in session
     $user_id = $_SESSION['2fa_user_id'] ?? null;
 
@@ -54,15 +52,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <!-- 2FA Verification Form -->
             <form action="verify_2fa.php" method="POST" novalidate>
-                <!-- CSRF Token -->
-                <input type="hidden" name="csrf_token" value="<?php echo escape(generateCsrfToken()); ?>">
+            <!-- CSRF Token -->
+            <input type="hidden" name="csrf_token" value="<?php echo escape(generateCsrfToken()); ?>">
 
-                <!-- 2FA Code Field -->
-                <div class="mb-3">
-                    <label for="2fa_code" class="form-label">Enter the 2FA Code sent to your email<span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="2fa_code" name="2fa_code" required pattern="\d{6}" maxlength="6">
-                    <div class="form-text">6-digit code.</div>
-                </div>
+            <!-- 2FA Code Field -->
+            <div class="mb-3">
+                <label for="two_fa_code" class="form-label">Enter the 2FA Code sent to your email <span class="text-danger">*</span></label>
+                <input 
+                    type="text" 
+                    class="form-control" 
+                    id="two_fa_code" 
+                    name="2fa_code" 
+                    required 
+                    value="<?php echo isset($_POST['2fa_code']) ? escape($_POST['2fa_code']) : ''; ?>" 
+                    pattern="\d{6}" 
+                    maxlength="6">
+                <div class="form-text">6-digit code.</div>
+            </div>
+
 
                 <!-- Submit Button -->
                 <button type="submit" class="btn btn-primary">Verify</button>

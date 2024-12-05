@@ -93,6 +93,15 @@ function processResendVerificationForm($pdo, $email) {
     $errors = [];
     $success = '';
 
+    // CSRF token validation
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['errors' => $errors, 'success' => $success];
+    }
+
+    // Retrieve and sanitize input
+    $email = trim($_POST['email'] ?? '');
+
     // Validate email format
     if (empty($email)) {
         $errors[] = "Email is required.";
@@ -126,6 +135,7 @@ function processResendVerificationForm($pdo, $email) {
         ]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        //Checks is user is verified and handle the user attempts
         if ($user) {
             if ($user['is_verified'] == 1) {
                 $success = $email_message_verified;
@@ -149,6 +159,15 @@ function processResendVerificationForm($pdo, $email) {
 function processPasswordResetForm($pdo, $email) {
     $errors = [];
     $success = '';
+
+    // CSRF token validation
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return ['errors' => $errors, 'success' => $success];
+    }
+
+    // Retrieve and sanitize input
+    $email = trim($_POST['email'] ?? '');
 
     // Validate email format
     if (empty($email)) {
@@ -421,7 +440,6 @@ function processLoginForm(PDO $pdo): array {
 
     // Initialize user_id and user_name
     $user_id = null;
-    $user_name = null;
 
     // Fetch user details if email is provided
     if (!empty($email)) {
@@ -430,7 +448,6 @@ function processLoginForm(PDO $pdo): array {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($user) {
             $user_id = $user['id'];
-            $user_name = $user['name'];
         }
     }
 
@@ -495,6 +512,7 @@ function processLoginForm(PDO $pdo): array {
         if (password_verify($password, $user['password'])) {
             if ($user['is_verified'] != 1) {
                 $errors[] = "Your email is not verified. Please verify your email.";
+                incrementLoginAttempts($pdo, $user_id, $client_ip, 'login');
                 return $errors;
             } else {
                 // Credentials are correct, proceed to handle 2FA
@@ -506,7 +524,6 @@ function processLoginForm(PDO $pdo): array {
                     // If there are errors in handling 2FA, return them
                     return $two_fa_errors;
                 }
-                // If handle2FA redirects, the following code won't execute
             }
         } else {
             // Password is incorrect
@@ -526,4 +543,63 @@ function processLoginForm(PDO $pdo): array {
     // Return any accumulated errors
     return $errors;
 }
+
+/**
+ * Validates the password reset access method.
+ */
+function processValidateResetAccess(PDO $pdo, string $source, ?string $token): array {
+    $errors = [];
+    $can_display_form = false;
+    $is_security_questions = false;
+    $user_id = null;
+
+    if ($source === 'security_questions') {
+        // Validate security questions access
+        if (isset($_SESSION['can_reset_password']) && $_SESSION['can_reset_password'] === true) {
+            $is_security_questions = true;
+            $can_display_form = true;
+        } else {
+            $errors[] = "Unauthorized access to password reset.";
+        }
+    } elseif (!empty($token)) {
+        // Validate token-based access
+        try {
+            $stmt = $pdo->prepare("
+                SELECT user_id, expires_at 
+                FROM tokens 
+                WHERE token = :token AND type = 'password_reset'
+            ");
+            $stmt->execute([':token' => $token]);
+            $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($token_data) {
+                $current_time = new DateTime();
+                $expires_at = new DateTime($token_data['expires_at']);
+
+                if ($current_time > $expires_at) {
+                    $errors[] = "This password reset link has expired.";
+                } else {
+                    $can_display_form = true;
+                    $_SESSION['reset_token'] = $token; 
+                    $user_id = $token_data['user_id'];
+                }
+            } else {
+                $errors[] = "Invalid password reset token.";
+            }
+        } catch (Exception $e) {
+            error_log("Token Validation Error: " . $e->getMessage());
+            $errors[] = "An error occurred while validating your reset token. Please try again later.";
+        }
+    } else {
+        $errors[] = "Invalid password reset access method.";
+    }
+
+    return [
+        'can_display_form' => $can_display_form,
+        'is_security_questions' => $is_security_questions,
+        'user_id' => $user_id,
+        'errors' => $errors
+    ];
+}
+
 ?>

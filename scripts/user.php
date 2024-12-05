@@ -64,7 +64,6 @@ function fetchUserDetails(PDO $pdo, int $user_id): array {
                 'error' => null
             ];
         } else {
-            // User not found
             return [
                 'success' => false,
                 'user' => null,

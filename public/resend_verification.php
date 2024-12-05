@@ -15,8 +15,6 @@ if (isLoggedIn()) {
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Retrieve and sanitize input
-    $email = trim($_POST['email'] ?? '');
 
     // Process the resend verification form using the function
     $result = processResendVerificationForm($pdo, $email);

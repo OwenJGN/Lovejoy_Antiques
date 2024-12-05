@@ -10,7 +10,7 @@ function generateAndStore2FACode(PDO $pdo, int $user_id) {
     $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     
     $hash_code = password_hash($code, PASSWORD_BCRYPT);
-    // Set expiration time (e.g., 10 minutes from now)
+    // Set expiration time (10 minutes from now)
     $expires_at = date('Y-m-d H:i:s', strtotime('+10 minutes'));
     
     try {
@@ -43,7 +43,6 @@ function verify2FACode(PDO $pdo, int $user_id, string $code, int $max_attempts =
         // Fetch the latest 2FA code for the user
         $record = fetchLatest2FACode($pdo, $user_id);
         
-        $current_time = new DateTime();
         if ($record) {
 
             $locked_minutes = checkAndResetLock2FA($pdo, $user_id);
@@ -135,7 +134,7 @@ function handle2FA(PDO $pdo, int $user_id): array {
  * Checks if the user has exceeded the 2FA resend limit and enforces cooldown periods.
  */
 function check2FAResendLimit(PDO $pdo, int $user_id): array {
-    // Define limits
+
     $max_resends = 5; // Maximum number of resends allowed
     $resend_cooldown_minutes = 2; // Cooldown period in minutes
 
@@ -196,7 +195,6 @@ function update2FAResendInfo(PDO $pdo, int $user_id): void {
         ");
         $stmt->execute([':user_id' => $user_id]);
 
-        // Log the update action for debugging
     } catch (PDOException $e) {
         error_log("Error updating 2FA resend info for user ID {$user_id}: " . $e->getMessage());
     }
@@ -403,6 +401,15 @@ function handle2FALogin(PDO $pdo, int $user_id, string $entered_code): array {
     $errors = [];
     $redirect = null;
 
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        $errors[] = "Invalid CSRF token.";
+        return $errors;
+    }
+
+    //Santise code
+    $entered_code = trim($_POST['2fa_code'] ?? '');
+
     // Check and reset lock status for 2FA
     checkAndResetLock2FA($pdo, $user_id);
 
@@ -416,7 +423,6 @@ function handle2FALogin(PDO $pdo, int $user_id, string $entered_code): array {
         $verification_result = verify2FACode($pdo, $user_id, $entered_code);
 
         if ($verification_result === true) {
-            // Successful verification
 
             // Fetch user details
             $stmt = $pdo->prepare("SELECT name FROM users WHERE id = :id LIMIT 1");
@@ -434,9 +440,6 @@ function handle2FALogin(PDO $pdo, int $user_id, string $entered_code): array {
                 // Unset temporary session variables
                 unset($_SESSION['2fa_user_id']);
                 unset($_SESSION['temp_user_name']);
-
-                // Regenerate session ID to prevent session fixation
-                session_regenerate_id(true);
 
                 // Set redirect URL
                 $redirect = 'index.php';

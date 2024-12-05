@@ -17,7 +17,7 @@ $user_id = null;
 // Validate the reset access method
 $source = $_GET['source'] ?? '';
 $token = $_GET['token'] ?? '';
-$validation_result = validateResetAccess($pdo, $source, $token);
+$validation_result = processValidateResetAccess($pdo, $source, $token);
 
 // Extract results from validation
 $can_display_form = $validation_result['can_display_form'];

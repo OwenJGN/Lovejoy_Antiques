@@ -18,6 +18,7 @@ function handlePasswordReset(PDO $pdo, bool $is_security_questions, ?int $user_i
         ];
     }
 }
+
 /**
  * Check the password is not in the common password list
  */
@@ -95,7 +96,6 @@ function processNewPassword($pdo, $is_security_questions = false, $user_id = nul
     }
 
     // Retrieve and sanitize inputs
-    $source = $_POST['source'] ?? '';
     $token = $_POST['token'] ?? '';
     $new_password = $_POST['new_password'] ?? '';
     $confirm_new_password = $_POST['confirm_new_password'] ?? '';
@@ -107,7 +107,6 @@ function processNewPassword($pdo, $is_security_questions = false, $user_id = nul
             return ['success' => $success, 'errors' => $errors];
         }
     } elseif (!empty($token)) {
-        // Token-based reset
     } else {
         $errors[] = "Invalid password reset access method.";
         return ['success' => $success, 'errors' => $errors];

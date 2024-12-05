@@ -1,5 +1,7 @@
 <?php
-// config.php
+/*
+* Configuration File
+*/
 
 // Google reCAPTCHA Keys
 define('RECAPTCHA_SITE_KEY', '6Leu6oMqAAAAALCJy7q8XQwHFrmRFRSPQtCKofa3'); 

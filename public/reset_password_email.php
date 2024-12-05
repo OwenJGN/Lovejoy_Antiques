@@ -12,9 +12,6 @@ $success = '';
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // Retrieve and sanitize input
-    $email = trim($_POST['email'] ?? '');
-
     // Process the resend verification form using the function
     $result = processPasswordResetForm($pdo, $email);
     // Assign results to variables for display
@@ -22,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors = $result['errors'];
 }
 ?>
+
 <!-- Main Content Area -->
 <div class="main-content">
     <div class="form-container">

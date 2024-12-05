@@ -32,7 +32,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Begin a transaction to ensure atomicity
             $pdo->beginTransaction();
 
-            // Delete related records from other tables
             // Delete evaluation requests
             $stmt = $pdo->prepare("DELETE FROM evaluation_requests WHERE user_id = :user_id");
             $stmt->execute([':user_id' => $user_id]);

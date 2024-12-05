@@ -3,7 +3,6 @@
 * Account Management Page
 */
 
-// Include necessary files
 require_once 'header.php';
 require_once '../scripts/functions.php';
 require_once '../scripts/db_connect.php';

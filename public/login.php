@@ -26,11 +26,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $show_captcha = $result['show_captcha'];
     $user_id = $result['user_id'];
 
-    // If no errors after credential verification, proceed to 2FA
-    if (empty($errors) && $user_id) {
-        $two_fa_errors = handle2FA($pdo, $user_id);
-        $errors = array_merge($errors, $two_fa_errors);
-    }
 }
 
 ?>

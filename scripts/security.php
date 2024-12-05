@@ -26,63 +26,6 @@ function authenticateUser($pdo, $email, $password) {
     return false;
 }
 
-/**
- * Validates the password reset access method.
- */
-function validateResetAccess(PDO $pdo, string $source, ?string $token): array {
-    $errors = [];
-    $can_display_form = false;
-    $is_security_questions = false;
-    $user_id = null;
-
-    if ($source === 'security_questions') {
-        // Validate security questions access
-        if (isset($_SESSION['can_reset_password']) && $_SESSION['can_reset_password'] === true) {
-            $is_security_questions = true;
-            $can_display_form = true;
-        } else {
-            $errors[] = "Unauthorized access to password reset.";
-        }
-    } elseif (!empty($token)) {
-        // Validate token-based access
-        try {
-            $stmt = $pdo->prepare("
-                SELECT user_id, expires_at 
-                FROM tokens 
-                WHERE token = :token AND type = 'password_reset'
-            ");
-            $stmt->execute([':token' => $token]);
-            $token_data = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($token_data) {
-                $current_time = new DateTime();
-                $expires_at = new DateTime($token_data['expires_at']);
-
-                if ($current_time > $expires_at) {
-                    $errors[] = "This password reset link has expired.";
-                } else {
-                    $can_display_form = true;
-                    $_SESSION['reset_token'] = $token; // Optional for added security
-                    $user_id = $token_data['user_id'];
-                }
-            } else {
-                $errors[] = "Invalid password reset token.";
-            }
-        } catch (Exception $e) {
-            error_log("Token Validation Error: " . $e->getMessage());
-            $errors[] = "An error occurred while validating your reset token. Please try again later.";
-        }
-    } else {
-        $errors[] = "Invalid password reset access method.";
-    }
-
-    return [
-        'can_display_form' => $can_display_form,
-        'is_security_questions' => $is_security_questions,
-        'user_id' => $user_id,
-        'errors' => $errors
-    ];
-}
 
 /**
  * Hash data using BCRYPT

@@ -3,7 +3,6 @@
 * Reset passwords using security
 */
 
-
 require_once 'header.php'; 
 require_once '../scripts/functions.php'; 
 

@@ -53,7 +53,6 @@ function registerUser($pdo, $name, $email, $password, $phone,
     } catch (Exception $e) {
         // Rollback the transaction on error
         $pdo->rollBack();
-        // Log the error message (ensure not to expose it to users)
         error_log("Registration Error: " . $e->getMessage());
         return "An error occurred while registering. Please try again later.";
     }
